@@ -1051,6 +1051,7 @@ DiffMatching::notify (const PacketPtr &pkt, const PrefetchInfo &pfi)
                     d = (range_ahead_buffer_level_1 > 0) ? 4 : 0;
                     range_ahead_buffer_level_1 = 0;
                     range_ahead_dist_level_1 += d;
+                    range_ahead_dist_level_1 = (range_ahead_dist_level_1 > 24) ? 24 : range_ahead_dist_level_1;
 
                     // reset upper level
                     replace_count_level_2 = 0;
@@ -1059,6 +1060,7 @@ DiffMatching::notify (const PacketPtr &pkt, const PrefetchInfo &pfi)
                     d = (range_ahead_buffer_level_2 > 0) ? 4 : 0;
                     range_ahead_buffer_level_2 = 0;
                     range_ahead_dist_level_2 += d;
+                    range_ahead_dist_level_2 = (range_ahead_dist_level_2 > 40) ? 40 : range_ahead_dist_level_2;
 
                     // reset zero level
                     range_ahead_dist_level_1 = range_ahead_init_level_1;
