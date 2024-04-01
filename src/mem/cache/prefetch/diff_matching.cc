@@ -28,6 +28,7 @@ DiffMatching::DiffMatching(const DiffMatchingPrefetcherParams &p)
     range_ahead_buffer_level_1(0),
     range_ahead_buffer_level_2(0),
     indir_range(p.indir_range),
+    upper_400ca0(0),
     replace_count_level_2(0),
     replace_threshold_level_2(p.replace_threshold_level_2),
     notify_latency(p.notify_latency),
@@ -744,6 +745,14 @@ DiffMatching::notifyL1Resp(const PacketPtr &pkt)
         }
     }
 
+    if (pkt->req->getPC() == 0x400c80) {
+        for (const auto& rt_ent : relationTable) {
+            if (rt_ent.valid && rt_ent.index_pc == 0x400c7c) {
+                upper_400ca0 = (resp_data << rt_ent.shift) + rt_ent.target_base_addr;
+            }
+        }
+    }
+
     // DPRINTF(HWPrefetch, "notifyL1Resp: PC %llx, PAddr %llx, VAddr %llx, Size %d, Data %llx\n", 
     //                     pkt->req->getPC(), pkt->req->getPaddr(), 
     //                     pkt->req->hasVaddr() ? pkt->req->getVaddr() : 0x0,
@@ -940,8 +949,8 @@ DiffMatching::hitTrigger(Addr pc, Addr addr, const uint8_t* data_ptr, bool from_
             /* calculate target prefetch address */
             Addr pf_addr = (resp_data << rt_ent.shift) + rt_ent.target_base_addr;
             DPRINTF(HWPrefetch, 
-                    "hitTrigger: PC %llx, Addr %llx, data_offset %d, data %d, pf_addr %llx\n", 
-                    pc, addr, data_offset, resp_data, pf_addr);
+                    "hitTrigger: PC %llx, Addr %llx, data_offset %d, data %d, upper %llx, pf_addr %llx\n", 
+                    pc, addr, data_offset, resp_data, upper_400ca0, pf_addr);
 
             // insert to missing translation queue
             insertIndirectPrefetch(pf_addr, rt_ent.target_pc, rt_ent.cID, rt_ent.priority);
@@ -1038,7 +1047,7 @@ DiffMatching::notify (const PacketPtr &pkt, const PrefetchInfo &pfi)
             ContextID cid = pkt->req->contextId();
             int32_t access_prio = getRangeType(pc, cid);
 
-            if (access_prio > 0) {
+            if (access_prio % range_group_size == 0) {
 
                 int range_level = 
                     (std::numeric_limits<int32_t>::max() - access_prio) / range_group_size;
@@ -1046,32 +1055,35 @@ DiffMatching::notify (const PacketPtr &pkt, const PrefetchInfo &pfi)
                 DPRINTF(HWPrefetch, "pc %llx access_prio %d range_level : %d\n", pc, access_prio, range_level); 
 
                 int i,d;
+                d = 0;
                 if (range_level == 0) {
                     i = range_ahead_dist_level_1;
-                    d = (range_ahead_buffer_level_1 > 0) ? 4 : 0;
-                    range_ahead_buffer_level_1 = 0;
-                    range_ahead_dist_level_1 += d;
-                    range_ahead_dist_level_1 = (range_ahead_dist_level_1 > 24) ? 24 : range_ahead_dist_level_1;
+                    // d = (range_ahead_buffer_level_1 > 0) ? 4 : 0;
+                    // range_ahead_buffer_level_1 = 0;
+                    // range_ahead_dist_level_1 += d;
+                    // range_ahead_dist_level_1 = (range_ahead_dist_level_1 > 24) ? 24 : range_ahead_dist_level_1;
 
                     // reset upper level
-                    replace_count_level_2 = 0;
+                    // replace_count_level_2 = 0;
                 } else {
                     i = range_ahead_dist_level_2;
-                    d = (range_ahead_buffer_level_2 > 0) ? 4 : 0;
-                    range_ahead_buffer_level_2 = 0;
-                    range_ahead_dist_level_2 += d;
-                    range_ahead_dist_level_2 = (range_ahead_dist_level_2 > 40) ? 40 : range_ahead_dist_level_2;
+                    // d = (range_ahead_buffer_level_2 > 0) ? 4 : 0;
+                    // range_ahead_buffer_level_2 = 0;
+                    // range_ahead_dist_level_2 += d;
+                    // range_ahead_dist_level_2 = (range_ahead_dist_level_2 > 40) ? 40 : range_ahead_dist_level_2;
 
                     // reset zero level
-                    range_ahead_dist_level_1 = range_ahead_init_level_1;
+                    // range_ahead_dist_level_1 = range_ahead_init_level_1;
                 }
 
                 for (int ahead = i; ahead <= i+d; ahead += 4) {
                     CacheBlk* try_cache_blk = cache->getCacheBlk(pkt->getAddr()+ahead, pkt->isSecure());
                     if (try_cache_blk != nullptr && try_cache_blk->data ) {
                         // notifyFill(pkt, try_cache_blk->data);
-
-                        hitTrigger(pc, pkt->req->getPaddr()+ahead, try_cache_blk->data, true);
+                        Addr ahead_addr = pkt->req->getVaddr() + ahead;
+                        if (range_level == 0 && ahead_addr < upper_400ca0){
+                            hitTrigger(pc, ahead_addr, try_cache_blk->data, true);
+                        }
 
                     } else {
                         insertIndirectPrefetch(

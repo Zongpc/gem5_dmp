@@ -44,6 +44,7 @@ class DiffMatching : public Stride
     int range_ahead_buffer_level_1;
     int range_ahead_buffer_level_2;
     int indir_range;
+    Addr upper_400ca0;
 
     int replace_count_level_2;
     int replace_threshold_level_2;
