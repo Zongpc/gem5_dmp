@@ -421,6 +421,13 @@ def addCommonOptions(parser):
         help="Size of first stage ArmTLB"
     )
     parser.add_argument(
+        "--lru-pf-gap",
+        default=0,
+        action="store",
+        type=int,
+        help="Prefetch first-replacement gap-zone size"
+    )
+    parser.add_argument(
         "--sample-stats",
         action="store",
         type=str,

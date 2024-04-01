@@ -175,3 +175,12 @@ class WeightedLRURP(LRURP):
     type = "WeightedLRURP"
     cxx_class = "gem5::replacement_policy::WeightedLRU"
     cxx_header = "mem/cache/replacement_policies/weighted_lru_rp.hh"
+
+class LRUDEPRP(LRURP):
+    type = "LRUDEPRP"
+    cxx_class = "gem5::replacement_policy::LRUDEP"
+    cxx_header = "mem/cache/replacement_policies/lru_dep_rp.hh"
+
+    slope = Param.Float(0.8, "Prefetch victim value slope")
+    bias = Param.Int(-30, "Prefetch victim value bias")
+    pf_gap = Param.Tick(400, "Prefetch first-replacement gap-zone size")
