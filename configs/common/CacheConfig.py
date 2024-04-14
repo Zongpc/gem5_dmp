@@ -87,9 +87,9 @@ def _get_cache_opts(level, options):
     if hasattr(options, assoc_attr):
         opts["assoc"] = getattr(options, assoc_attr)
 
-    mshr_num = "{}_mshr_num".format(level)
-    if hasattr(options, mshr_num):
-        opts["mshrs"] = getattr(options, mshr_num)
+    # mshr_num = "{}_mshr_num".format(level)
+    # if hasattr(options, mshr_num):
+    #     opts["mshrs"] = getattr(options, mshr_num)
 
     prefetcher_attr = "{}_hwp_type".format(level)
     if hasattr(options, prefetcher_attr):
@@ -118,8 +118,10 @@ def config_cache(options, system):
 
     if options.cpu_type == "O3_ARM_v7a_3":
         try:
-            import cores.arm.O3_ARM_v7a_three_level as core
+            #import cores.arm.O3_ARM_v7a_three_level as core
             #import cores.arm.O3_ARM_v7a_paper as core
+            #import cores.arm.O3_ARM_v7a_CortexA15 as core
+            import cores.arm.O3_ARM_v7a_N1 as core
         except:
             print("O3_ARM_v7a_3 is unavailable. Did you compile the O3 model?")
             sys.exit(1)
@@ -241,9 +243,6 @@ def config_cache(options, system):
 
                 system.cpu[i].dcache.prefetcher.auto_detect = False
 
-                system.cpu[i].dcache.prefetcher.queue_size = 64
-                system.cpu[i].dcache.prefetcher.max_prefetch_requests_with_pending_translation = 64
-
                 if options.dmp_init_bench:
                     system.cpu[i].dcache.prefetcher.index_pc_init = \
                         ObjectList.dmp_bench_init_pc[ObjectList.dmp_bench_list[options.dmp_init_bench]][0]
@@ -254,11 +253,14 @@ def config_cache(options, system):
 
             # enable VA for all prefetcher
             if options.l1d_hwp_type:
+                system.cpu[i].dcache.prefetcher.queue_size = 64
+                system.cpu[i].dcache.prefetcher.max_prefetch_requests_with_pending_translation = 64
+
                 system.cpu[i].dcache.prefetcher.prefetch_on_access = True
                 system.cpu[i].dcache.prefetcher.use_virtual_addresses = True
                 system.cpu[i].dcache.prefetcher.tag_vaddr = True
                 system.cpu[i].dcache.prefetcher.stats_pc_list = monitor_pc_list 
-                system.cpu[i].dcache.prefetcher.latency = 3
+                #system.cpu[i].dcache.prefetcher.latency = 3
                 # system.cpu[i].dcache.prefetcher.latency = 5
                 if system.cpu[i].mmu.dtb:
                     print("Adding DTLB to DCache prefetcher.")

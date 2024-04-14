@@ -1055,25 +1055,25 @@ DiffMatching::notify (const PacketPtr &pkt, const PrefetchInfo &pfi)
                 DPRINTF(HWPrefetch, "pc %llx access_prio %d range_level : %d\n", pc, access_prio, range_level); 
 
                 int i,d;
-                d = 0;
+                // d = 0;
                 if (range_level == 0) {
                     i = range_ahead_dist_level_1;
-                    // d = (range_ahead_buffer_level_1 > 0) ? 4 : 0;
-                    // range_ahead_buffer_level_1 = 0;
-                    // range_ahead_dist_level_1 += d;
+                    d = (range_ahead_buffer_level_1 > 0) ? 4 : 0;
+                    range_ahead_buffer_level_1 = 0;
+                    range_ahead_dist_level_1 += d;
                     // range_ahead_dist_level_1 = (range_ahead_dist_level_1 > 24) ? 24 : range_ahead_dist_level_1;
 
                     // reset upper level
-                    // replace_count_level_2 = 0;
+                    replace_count_level_2 = 0;
                 } else {
                     i = range_ahead_dist_level_2;
-                    // d = (range_ahead_buffer_level_2 > 0) ? 4 : 0;
-                    // range_ahead_buffer_level_2 = 0;
-                    // range_ahead_dist_level_2 += d;
+                    d = (range_ahead_buffer_level_2 > 0) ? 4 : 0;
+                    range_ahead_buffer_level_2 = 0;
+                    range_ahead_dist_level_2 += d;
                     // range_ahead_dist_level_2 = (range_ahead_dist_level_2 > 40) ? 40 : range_ahead_dist_level_2;
 
                     // reset zero level
-                    // range_ahead_dist_level_1 = range_ahead_init_level_1;
+                    range_ahead_dist_level_1 = range_ahead_init_level_1;
                 }
 
                 for (int ahead = i; ahead <= i+d; ahead += 4) {
@@ -1081,7 +1081,11 @@ DiffMatching::notify (const PacketPtr &pkt, const PrefetchInfo &pfi)
                     if (try_cache_blk != nullptr && try_cache_blk->data ) {
                         // notifyFill(pkt, try_cache_blk->data);
                         Addr ahead_addr = pkt->req->getVaddr() + ahead;
-                        if (range_level == 0 && ahead_addr < upper_400ca0){
+                        if (range_level == 0) {
+                            if (ahead_addr < upper_400ca0) {
+                                hitTrigger(pc, ahead_addr, try_cache_blk->data, true);
+                            }
+                        } else {
                             hitTrigger(pc, ahead_addr, try_cache_blk->data, true);
                         }
 

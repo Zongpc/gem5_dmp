@@ -469,7 +469,7 @@ class Base : public ClockedObject
     void
     prefetchUnused(Addr pc)
     {
-        // pfReplaceHook(pc);
+        pfReplaceHook(pc);
 
         prefetchStats.pfUnused++;
 
@@ -485,7 +485,7 @@ class Base : public ClockedObject
 
     void incrDemandMshrHitsAtPf(Addr pc)
     {
-        // dmdCatchPfHook(pc);
+        dmdCatchPfHook(pc);
 
         prefetchStats.demandMshrHitsAtPf++;
 
