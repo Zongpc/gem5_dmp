@@ -372,11 +372,11 @@ BaseCache::handleTimingReqMiss(PacketPtr pkt, MSHR *mshr, CacheBlk *blk,
 
                         if (prefetcher && pkt->isDemand()) {
                             // should be counted as the prefetch request pc in mshr
-                            Addr mshr_pc = first_target->pkt->req->hasPC() ? 
+                            Addr mshr_pc = first_target->pkt->req->hasPC() ?
                                             first_target->pkt->req->getPC() : MaxAddr;
                             prefetcher->incrDemandMshrHitsAtPf(mshr_pc);
                         }
-                        
+
                     }
                 }
 
@@ -958,11 +958,11 @@ BaseCache::getNextQueueEntry()
     assert(!miss_mshr && !wq_entry);
 
     // for debug trace
-    if (!prefetcher) 
+    if (!prefetcher)
         DPRINTF(RequestSlot, "[Failed] No available prefetcher\n");
-    else if (isBlocked()) 
+    else if (isBlocked())
         DPRINTF(RequestSlot, "[Failed] Cache Blocked\n");
-    else if (!mshrQueue.canPrefetch()) 
+    else if (!mshrQueue.canPrefetch())
         DPRINTF(RequestSlot, "[Failed] MSHR resource not enough\n");
 
     // do prefetch try
@@ -1944,11 +1944,11 @@ BaseCache::nextQueueReadyTime() const
     }
 
     DPRINTF(
-        RequestSlot, 
-        "[Schedule] Next send time: %lld MSHR: %lld WB: %lld PF: %lld\n", 
-        nextReady, 
-        mshrQueue.nextReadyTime(), 
-        writeBuffer.nextReadyTime(), 
+        RequestSlot,
+        "[Schedule] Next send time: %lld MSHR: %lld WB: %lld PF: %lld\n",
+        nextReady,
+        mshrQueue.nextReadyTime(),
+        writeBuffer.nextReadyTime(),
         prefetcher ? prefetcher->nextPrefetchReadyTime() : MaxTick
     );
 
@@ -2187,7 +2187,7 @@ BaseCache::CacheCmdStats::regStatsFromParent()
     statistics::Group::regStats();
     System *system = cache.system;
     const auto max_requestors = system->maxRequestors();
-      
+
     const int max_per_pc = 32;
     std::vector<Addr> stats_pc_list = cache.stats_pc_list;
 
@@ -2816,7 +2816,7 @@ BaseCache::regProbePoints()
     ppDataUpdate =
         new ProbePointArg<DataUpdate>(this->getProbeManager(), "Data Update");
 
-    
+
     ppL1Req = new ProbePointArg<PacketPtr>(this->getProbeManager(), "Request");
     ppL1Resp = new ProbePointArg<PacketPtr>(this->getProbeManager(), "Response");
 }

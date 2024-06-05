@@ -1,0 +1,6 @@
+      0: system.cpu.dcache.prefetcher: the size of iddt_ent_t 64
+      0: system.cpu.dcache.prefetcher: the size of tadt_ent_t 64
+      0: system.cpu.dcache.prefetcher: the size of RangeTableEntry 72
+      0: system.cpu.dcache.prefetcher: the size of IndexQueueEntry 24
+      0: system.cpu.dcache.prefetcher: the size of ICSEntry 80
+      0: system.cpu.dcache.prefetcher: the size of RTEntry 48

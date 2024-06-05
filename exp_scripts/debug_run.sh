@@ -3,17 +3,18 @@
 GEM5_PATH=".."
 GEM5_ARCH="ARM"
 GEM5_BIN="$GEM5_PATH/build/$GEM5_ARCH/gem5.opt"
-SW_PATH="aarch-system-20220707"
+SW_PATH="aarch-system-20240413"
 
 CHECKPOINT="fs_as-caida_m5out"
 DEBUG_FLAG_ARR=(
 #    "TLB,TLBVerbose"
     "HWPrefetch,HWPrefetchQueue"
     "Cache,CacheVerbose,CachePort"
-    "RequestSlot"
-    "PacketQueue"
-    "CoherentXBar"
+    # "RequestSlot"
+    # "PacketQueue"
+    # "CoherentXBar"
     "DMP"
+    # "POINTER"
 )
 
 function gem5_run() {
@@ -28,11 +29,11 @@ function gem5_run() {
     cd $RUN_LABEL
     local LGEM5_PATH="../${GEM5_PATH}"
     local LGEM5_BIN="../${GEM5_BIN}"
-    local LSW_PATH="../${SW_PATH}" 
+    local LSW_PATH="../${SW_PATH}"
     local LCHECKPOINT="../${CHECKPOINT}"
 
     $LGEM5_BIN --debug-flags=$1 \
-        ${LGEM5_PATH}/configs/dmp_pf/fs.py \
+        ${LGEM5_PATH}/configs/dmp_pf/fs_L2.py \
         --num-cpus 1 \
         --cpu-clock 2.5GHz \
         --cpu-type O3_ARM_v7a_3 \
@@ -58,5 +59,3 @@ for label in ${DEBUG_FLAG_ARR[@]}; do
 done
 
 wait
-
-

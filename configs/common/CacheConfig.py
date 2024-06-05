@@ -49,8 +49,17 @@ from common.Caches import *
 from common import ObjectList
 
 monitor_pc_list = [
-    0x400c70, 0x400c7c, 0x400c80, 0x400ca0, 0x400ca4, 0x400cc0, 0x400ccc, 0x400cdc
+    0x7FBF6DA800,
+    0x7FBF6DD0B4,
+    0x7FBF6DCA8C,
+    0x7FBF6E5488,
+    0x400E3C,
+    0x400E60,
+    0x400E68,
+    0x400E70,
+    0x400E54,
 ]
+
 
 def _get_hwp(hwp_option):
     if hwp_option == None:
@@ -59,6 +68,7 @@ def _get_hwp(hwp_option):
     hwpClass = ObjectList.hwp_list.get(hwp_option)
     return hwpClass()
 
+
 def _get_replply(repl_option):
     if repl_option == None:
         return NULL
@@ -66,12 +76,14 @@ def _get_replply(repl_option):
     replClass = ObjectList.rp_list.get(repl_option)
     return replClass()
 
+
 def _get_tag_store(tag_store_option):
     if tag_store_option == None:
         return NULL
 
     tagClass = ObjectList.tag_list.get(tag_store_option)
     return tagClass()
+
 
 def _get_cache_opts(level, options):
     opts = {}
@@ -91,14 +103,16 @@ def _get_cache_opts(level, options):
     prefetcher_attr = "{}_hwp_type".format(level)
     if hasattr(options, prefetcher_attr):
         opts["prefetcher"] = _get_hwp(getattr(options, prefetcher_attr))
-    
-    repl_policy_attr = '{}_repl_policy'.format(level)
+
+    repl_policy_attr = "{}_repl_policy".format(level)
     if hasattr(options, repl_policy_attr):
-        opts['replacement_policy'] = _get_replply(getattr(options, repl_policy_attr))
-    
-    tag_store_attr = '{}_tag_store'.format(level)
+        opts["replacement_policy"] = _get_replply(
+            getattr(options, repl_policy_attr)
+        )
+
+    tag_store_attr = "{}_tag_store".format(level)
     if hasattr(options, tag_store_attr):
-        opts['tags'] = _get_tag_store(getattr(options, tag_store_attr))
+        opts["tags"] = _get_tag_store(getattr(options, tag_store_attr))
 
     print(opts)
 
@@ -115,7 +129,7 @@ def config_cache(options, system):
 
     if options.cpu_type == "O3_ARM_v7a_3":
         try:
-            #import cores.arm.O3_ARM_v7a_three_level as core
+            # import cores.arm.O3_ARM_v7a_three_level as core
             import cores.arm.O3_ARM_v7a_paper as core
         except:
             print("O3_ARM_v7a_3 is unavailable. Did you compile the O3 model?")
@@ -214,41 +228,72 @@ def config_cache(options, system):
             system.cpu[i].dcache.stats_pc_list = monitor_pc_list
 
             if options.l1d_hwp_type == "StridePrefetcher":
-                system.cpu[i].dcache.prefetcher.degree = getattr(options, "stride_degree", 4)
+                system.cpu[i].dcache.prefetcher.degree = getattr(
+                    options, "stride_degree", 4
+                )
 
             if options.l1d_hwp_type == "DiffMatchingPrefetcher":
                 system.cpu[i].dcache.prefetcher.set_probe_obj(
-                    system.cpu[i].dcache, system.cpu[i].dcache, system.cpu[i].dcache
+                    system.cpu[i].dcache,
+                    system.cpu[i].dcache,
+                    system.cpu[i].dcache,
                 )
 
-                system.cpu[i].dcache.prefetcher.degree = getattr(options, "stride_degree", 4)
-                system.cpu[i].dcache.prefetcher.stream_ahead_dist = getattr(options, "dmp_stream_ahead_dist", 64)
-                system.cpu[i].dcache.prefetcher.indir_range = getattr(options, "dmp_indir_range", 4)
+                system.cpu[i].dcache.prefetcher.degree = getattr(
+                    options, "stride_degree", 4
+                )
+                system.cpu[i].dcache.prefetcher.stream_ahead_dist = getattr(
+                    options, "dmp_stream_ahead_dist", 64
+                )
+                system.cpu[i].dcache.prefetcher.indir_range = getattr(
+                    options, "dmp_indir_range", 4
+                )
 
                 # system.l2.prefetcher.queue_size = 1024*1024*16
                 # system.l2.prefetcher.max_prefetch_requests_with_pending_translation = 1024
                 system.l2.prefetcher.queue_size = 64
-                system.l2.prefetcher.max_prefetch_requests_with_pending_translation = 64
+                system.l2.prefetcher.max_prefetch_requests_with_pending_translation = (
+                    64
+                )
 
                 if options.dmp_init_bench:
-                    system.cpu[i].dcache.prefetcher.index_pc_init = \
-                        ObjectList.dmp_bench_init_pc[ObjectList.dmp_bench_list[options.dmp_init_bench]][0]
-                    system.cpu[i].dcache.prefetcher.target_pc_init = \
-                        ObjectList.dmp_bench_init_pc[ObjectList.dmp_bench_list[options.dmp_init_bench]][1]
-                    system.cpu[i].dcache.prefetcher.range_pc_init = \
-                        ObjectList.dmp_bench_init_pc[ObjectList.dmp_bench_list[options.dmp_init_bench]][2]
+                    system.cpu[
+                        i
+                    ].dcache.prefetcher.index_pc_init = ObjectList.dmp_bench_init_pc[
+                        ObjectList.dmp_bench_list[options.dmp_init_bench]
+                    ][
+                        0
+                    ]
+                    system.cpu[
+                        i
+                    ].dcache.prefetcher.target_pc_init = ObjectList.dmp_bench_init_pc[
+                        ObjectList.dmp_bench_list[options.dmp_init_bench]
+                    ][
+                        1
+                    ]
+                    system.cpu[
+                        i
+                    ].dcache.prefetcher.range_pc_init = ObjectList.dmp_bench_init_pc[
+                        ObjectList.dmp_bench_list[options.dmp_init_bench]
+                    ][
+                        2
+                    ]
 
             # enable VA for all prefetcher
             if options.l1d_hwp_type:
                 system.cpu[i].dcache.prefetcher.prefetch_on_access = True
                 system.cpu[i].dcache.prefetcher.use_virtual_addresses = True
                 system.cpu[i].dcache.prefetcher.tag_vaddr = True
-                system.cpu[i].dcache.prefetcher.stats_pc_list = monitor_pc_list 
+                system.cpu[i].dcache.prefetcher.stats_pc_list = monitor_pc_list
+                # system.cpu[i].dcache.prefetcher.latency = 0
+                # system.cpu[i].dcache.prefetcher.latency = 1
                 # system.cpu[i].dcache.prefetcher.latency = 3
                 system.cpu[i].dcache.prefetcher.latency = 5
                 if system.cpu[i].mmu.dtb:
                     print("Adding DTLB to DCache prefetcher.")
-                    system.cpu[i].dcache.prefetcher.registerTLB(system.cpu[i].mmu.dtb)
+                    system.cpu[i].dcache.prefetcher.registerTLB(
+                        system.cpu[i].mmu.dtb
+                    )
 
             if options.memchecker:
                 # The mem_side ports of the caches haven't been connected yet.
@@ -276,8 +321,10 @@ def config_cache(options, system):
                 )
 
         if options.tlb_size:
-            system.cpu[i].mmu.dtb.size = getattr(options, "tlb_size", 64)
-            system.cpu[i].mmu.stage2_dtb.size = getattr(options, "tlb_size", 64) // 2
+            system.cpu[i].mmu.dtb.size = getattr(options, "tlb_size", 4096)
+            system.cpu[i].mmu.stage2_dtb.size = (
+                getattr(options, "tlb_size", 4096) // 2
+            )
 
         system.cpu[i].mmu.dtb.can_serialize = True
 
@@ -286,12 +333,16 @@ def config_cache(options, system):
 
         system.cpu[i].createInterruptController()
         if options.l2cache:
-            assert(i==0) # only support single core 
+            assert i == 0  # only support single core
             if options.l2_hwp_type == "StridePrefetcher":
-                system.l2.prefetcher.degree = getattr(options, "stride_degree", 4)
+                system.l2.prefetcher.degree = getattr(
+                    options, "stride_degree", 4
+                )
 
             if options.l2_hwp_type == "IrregularStreamBufferPrefetcher":
-                system.l2.prefetcher.degree = getattr(options, "stride_degree", 4)
+                system.l2.prefetcher.degree = getattr(
+                    options, "stride_degree", 4
+                )
 
             if options.l2_hwp_type == "DiffMatchingPrefetcher":
 
@@ -300,39 +351,64 @@ def config_cache(options, system):
                         system.cpu[i].dcache, system.cpu[i].dcache, system.l2
                     )
                 if options.dmp_notify == "l2":
-                    system.l2.prefetcher.set_probe_obj(system.cpu[i].dcache, system.l2, system.l2)
+                    system.l2.prefetcher.set_probe_obj(
+                        system.cpu[i].dcache, system.l2, system.l2
+                    )
 
                 if options.l1d_hwp_type == "StridePrefetcher":
                     print("Add L1 StridePrefetcher as L2 DMP helper.")
-                    system.l2.prefetcher.set_pf_helper(system.cpu[i].dcache.prefetcher)
+                    system.l2.prefetcher.set_pf_helper(
+                        system.cpu[i].dcache.prefetcher
+                    )
                 else:
-                    system.l2.prefetcher.degree = getattr(options, "stride_degree", 4)
+                    system.l2.prefetcher.degree = getattr(
+                        options, "stride_degree", 4
+                    )
 
-                system.l2.prefetcher.stream_ahead_dist = getattr(options, "dmp_stream_ahead_dist", 64)
-                system.l2.prefetcher.range_ahead_dist = getattr(options, "dmp_range_ahead_dist", 0)
-                system.l2.prefetcher.indir_range = getattr(options, "dmp_indir_range", 4)
+                system.l2.prefetcher.stream_ahead_dist = getattr(
+                    options, "dmp_stream_ahead_dist", 64
+                )
+                system.l2.prefetcher.range_ahead_dist = getattr(
+                    options, "dmp_range_ahead_dist", 0
+                )
+                system.l2.prefetcher.indir_range = getattr(
+                    options, "dmp_indir_range", 4
+                )
 
                 system.l2.prefetcher.auto_detect = True
 
                 # system.l2.prefetcher.queue_size = 1024*1024*16
                 # system.l2.prefetcher.max_prefetch_requests_with_pending_translation = 1024
                 system.l2.prefetcher.queue_size = 64
-                system.l2.prefetcher.max_prefetch_requests_with_pending_translation = 64
+                system.l2.prefetcher.max_prefetch_requests_with_pending_translation = (
+                    64
+                )
 
                 if options.dmp_init_bench:
-                    system.l2.prefetcher.index_pc_init = \
-                        ObjectList.dmp_bench_init_pc[ObjectList.dmp_bench_list[options.dmp_init_bench]][0]
-                    system.l2.prefetcher.target_pc_init = \
-                        ObjectList.dmp_bench_init_pc[ObjectList.dmp_bench_list[options.dmp_init_bench]][1]
-                    system.l2.prefetcher.range_pc_init = \
-                        ObjectList.dmp_bench_init_pc[ObjectList.dmp_bench_list[options.dmp_init_bench]][2]
+                    system.l2.prefetcher.index_pc_init = (
+                        ObjectList.dmp_bench_init_pc[
+                            ObjectList.dmp_bench_list[options.dmp_init_bench]
+                        ][0]
+                    )
+                    system.l2.prefetcher.target_pc_init = (
+                        ObjectList.dmp_bench_init_pc[
+                            ObjectList.dmp_bench_list[options.dmp_init_bench]
+                        ][1]
+                    )
+                    system.l2.prefetcher.range_pc_init = (
+                        ObjectList.dmp_bench_init_pc[
+                            ObjectList.dmp_bench_list[options.dmp_init_bench]
+                        ][2]
+                    )
 
             # enable VA for all prefetcher
             if options.l2_hwp_type:
                 system.l2.prefetcher.prefetch_on_access = True
                 system.l2.prefetcher.use_virtual_addresses = True
                 system.l2.prefetcher.tag_vaddr = True
-                system.l2.prefetcher.stats_pc_list = monitor_pc_list 
+                system.l2.prefetcher.stats_pc_list = monitor_pc_list
+                # system.l2.prefetcher.latency = 0
+                # system.l2.prefetcher.latency = 11
                 # system.l2.prefetcher.latency = 15
                 system.l2.prefetcher.latency = 17
                 if system.cpu[i].mmu.dtb:
@@ -355,6 +431,7 @@ def config_cache(options, system):
 
     return system
 
+
 def config_three_level_cache(options, system):
     if options.external_memory_system and (options.caches or options.l2cache):
         print("External caches and internal caches are exclusive options.\n")
@@ -370,7 +447,13 @@ def config_three_level_cache(options, system):
             print("O3_ARM_v7a_3 is unavailable. Did you compile the O3 model?")
             sys.exit(1)
 
-        dcache_class, icache_class, l2_cache_class, l3_cache_class, walk_cache_class = (
+        (
+            dcache_class,
+            icache_class,
+            l2_cache_class,
+            l3_cache_class,
+            walk_cache_class,
+        ) = (
             core.O3_ARM_v7a_DCache,
             core.O3_ARM_v7a_ICache,
             core.O3_ARM_v7aL2,
@@ -378,7 +461,13 @@ def config_three_level_cache(options, system):
             None,
         )
     else:
-        dcache_class, icache_class, l2_cache_class, l3_cache_class, walk_cache_class = (
+        (
+            dcache_class,
+            icache_class,
+            l2_cache_class,
+            l3_cache_class,
+            walk_cache_class,
+        ) = (
             L1_DCache,
             L1_ICache,
             L2Cache,
@@ -430,14 +519,16 @@ def config_three_level_cache(options, system):
             else:
                 iwalkcache = None
                 dwalkcache = None
-            
+
             system.cpu[i].addPrivateSplitL1Caches(
                 icache, dcache, iwalkcache, dwalkcache
             )
-            
+
         if options.tlb_size:
-            system.cpu[i].mmu.dtb.size = getattr(options, "tlb_size", 64)
-            system.cpu[i].mmu.stage2_dtb.size = getattr(options, "tlb_size", 64) // 2
+            system.cpu[i].mmu.dtb.size = getattr(options, "tlb_size", 4096)
+            system.cpu[i].mmu.stage2_dtb.size = (
+                getattr(options, "tlb_size", 4096) // 2
+            )
 
         system.cpu[i].mmu.dtb.can_serialize = True
 
@@ -448,40 +539,68 @@ def config_three_level_cache(options, system):
 
         if options.l2cache and options.l3cache:
             system.cpu[i].l2 = l2_cache_class(
-                clk_domain=system.cpu_clk_domain, **_get_cache_opts("l2", options)
+                clk_domain=system.cpu_clk_domain,
+                **_get_cache_opts("l2", options)
             )
 
             if options.l2_hwp_type == "StridePrefetcher":
-                system.cpu[i].l2.prefetcher.degree = getattr(options, "stride_degree", 4)
+                system.cpu[i].l2.prefetcher.degree = getattr(
+                    options, "stride_degree", 4
+                )
 
             if options.l2_hwp_type == "IrregularStreamBufferPrefetcher":
-                system.cpu[i].l2.prefetcher.degree = getattr(options, "stride_degree", 4)
+                system.cpu[i].l2.prefetcher.degree = getattr(
+                    options, "stride_degree", 4
+                )
 
             if options.l2_hwp_type == "DiffMatchingPrefetcher":
-                system.cpu[i].l2.prefetcher.set_probe_obj(system.cpu[i].dcache, system.cpu[i].l2)
-                system.cpu[i].l2.prefetcher.degree = getattr(options, "stride_degree", 4)
+                system.cpu[i].l2.prefetcher.set_probe_obj(
+                    system.cpu[i].dcache, system.cpu[i].l2
+                )
+                system.cpu[i].l2.prefetcher.degree = getattr(
+                    options, "stride_degree", 4
+                )
 
-                system.cpu[i].l2.prefetcher.stream_ahead_dist = getattr(options, "dmp_stream_ahead_dist", 64)
-                system.cpu[i].l2.prefetcher.indir_range = getattr(options, "dmp_indir_range", 4)
-                #system.l2.prefetcher.queue_size = 1024*1024*16
-                #system.l2.prefetcher.max_prefetch_requests_with_pending_translation = 1024
+                system.cpu[i].l2.prefetcher.stream_ahead_dist = getattr(
+                    options, "dmp_stream_ahead_dist", 64
+                )
+                system.cpu[i].l2.prefetcher.indir_range = getattr(
+                    options, "dmp_indir_range", 4
+                )
+                # system.l2.prefetcher.queue_size = 1024*1024*16
+                # system.l2.prefetcher.max_prefetch_requests_with_pending_translation = 1024
 
                 if options.dmp_init_bench:
-                    system.cpu[i].l2.prefetcher.index_pc_init = \
-                        ObjectList.dmp_bench_init_pc[ObjectList.dmp_bench_list[options.dmp_init_bench]][0]
-                    system.cpu[i].l2.prefetcher.target_pc_init = \
-                        ObjectList.dmp_bench_init_pc[ObjectList.dmp_bench_list[options.dmp_init_bench]][1]
-                    system.cpu[i].l2.prefetcher.range_pc_init = \
-                        ObjectList.dmp_bench_init_pc[ObjectList.dmp_bench_list[options.dmp_init_bench]][2]
-                
-
+                    system.cpu[
+                        i
+                    ].l2.prefetcher.index_pc_init = ObjectList.dmp_bench_init_pc[
+                        ObjectList.dmp_bench_list[options.dmp_init_bench]
+                    ][
+                        0
+                    ]
+                    system.cpu[
+                        i
+                    ].l2.prefetcher.target_pc_init = ObjectList.dmp_bench_init_pc[
+                        ObjectList.dmp_bench_list[options.dmp_init_bench]
+                    ][
+                        1
+                    ]
+                    system.cpu[
+                        i
+                    ].l2.prefetcher.range_pc_init = ObjectList.dmp_bench_init_pc[
+                        ObjectList.dmp_bench_list[options.dmp_init_bench]
+                    ][
+                        2
+                    ]
 
             # enable VA for all prefetcher
             if options.l2_hwp_type:
                 system.cpu[i].l2.prefetcher.use_virtual_addresses = True
                 if system.cpu[i].mmu.dtb:
                     print("Adding DTLB to L2 prefetcher.")
-                    system.cpu[i].l2.prefetcher.registerTLB(system.cpu[i].mmu.dtb)
+                    system.cpu[i].l2.prefetcher.registerTLB(
+                        system.cpu[i].mmu.dtb
+                    )
 
             system.cpu[i].tol2bus = L2XBar(clk_domain=system.cpu_clk_domain)
             system.cpu[i].l2.cpu_side = system.cpu[i].tol2bus.mem_side_ports
@@ -490,13 +609,14 @@ def config_three_level_cache(options, system):
             system.cpu[i].connectAllPorts(
                 system.cpu[i].tol2bus.cpu_side_ports,
                 system.membus.cpu_side_ports,
-                system.membus.mem_side_ports
+                system.membus.mem_side_ports,
             )
-        
+
         else:
             system.cpu[i].connectBus(system.membus)
 
     return system
+
 
 # ExternalSlave provides a "port", but when that port connects to a cache,
 # the connecting CPU SimObject wants to refer to its "cpu_side".

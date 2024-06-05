@@ -134,7 +134,7 @@ void
 Stride::calculatePrefetch(const PrefetchInfo &pfi,
                                     std::vector<AddrPriority> &addresses)
 {
-    if (!pfi.hasPC()) {
+    if (!pfi.hasPC()||((pfi.getPC()&0xffff800000000000)!=0)) {
         DPRINTF(HWPrefetch, "Ignoring request with no PC.\n");
         return;
     }
@@ -169,7 +169,7 @@ Stride::calculatePrefetch(const PrefetchInfo &pfi,
             }
         }
 
-        DPRINTF(HWPrefetch, "Hit: PC %x pkt_addr %x (%s) stride %d (%s), "
+        DPRINTF(HWPrefetch, "?Hit: PC %x pkt_addr %x (%s) stride %d (%s), "
                 "conf %d\n", pc, pf_addr, is_secure ? "s" : "ns",
                 new_stride, stride_match ? "match" : "change",
                 (int)entry->confidence);
@@ -182,7 +182,7 @@ Stride::calculatePrefetch(const PrefetchInfo &pfi,
         }
 
         callReadytoIssue(pfi);
-        
+
         // if (pc == 0x400c70) pf_addr += blkSize;
 
         // Generate up to degree prefetches
@@ -198,7 +198,7 @@ Stride::calculatePrefetch(const PrefetchInfo &pfi,
         }
     } else {
         // Miss in table
-        DPRINTF(HWPrefetch, "Miss: PC %x pkt_addr %x (%s)\n", pc, pf_addr,
+        DPRINTF(HWPrefetch, "?Miss: PC %x pkt_addr %x (%s)\n", pc, pf_addr,
                 is_secure ? "s" : "ns");
 
         StrideEntry* entry = pcTable->findVictim(pc);

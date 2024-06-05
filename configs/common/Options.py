@@ -202,27 +202,36 @@ def addNoISAOptions(parser):
     parser.add_argument("--l2_mshr_num", type=int, default=32)
     parser.add_argument("--cacheline_size", type=int, default=64)
 
-    parser.add_argument("--l1d_repl_policy",  default="LRURP",
-                    choices=ObjectList.rp_list.get_names(),
-                    help="""
+    parser.add_argument(
+        "--l1d_repl_policy",
+        default="LRURP",
+        choices=ObjectList.rp_list.get_names(),
+        help="""
                     type of replacement policy to use with the L1
                     data cache.
                     (if not set, use the default repl_policy of
-                    the selected cache)""")
-    parser.add_argument("--l2_repl_policy",  default="LRURP",
-                    choices=ObjectList.rp_list.get_names(),
-                    help="""
+                    the selected cache)""",
+    )
+    parser.add_argument(
+        "--l2_repl_policy",
+        default="LRURP",
+        choices=ObjectList.rp_list.get_names(),
+        help="""
                     type of replacement policy to use with the L2
                     data cache.
                     (if not set, use the default repl_policy of
-                    the selected cache)""")
-    parser.add_argument("--l2_tag_store",  default="BaseSetAssoc",
-                    choices=ObjectList.tag_list.get_names(),
-                    help="""
+                    the selected cache)""",
+    )
+    parser.add_argument(
+        "--l2_tag_store",
+        default="BaseSetAssoc",
+        choices=ObjectList.tag_list.get_names(),
+        help="""
                     type of tag store to use with the L2
                     data cache.
                     (if not set, use the default tag store of
-                    the selected cache)""")
+                    the selected cache)""",
+    )
 
     # Enable Ruby
     parser.add_argument("--ruby", action="store_true")
@@ -380,7 +389,7 @@ def addCommonOptions(parser):
     )
     parser.add_argument(
         "--dmp-indir-range",
-        default=16,
+        default=2,
         action="store",
         type=int,
         help="Size of indirect prefetch range, limited by Cache blkSize",
@@ -390,21 +399,21 @@ def addCommonOptions(parser):
         default=None,
         choices=ObjectList.dmp_bench_list.keys(),
         type=str,
-        help="Bench name in order to init DMP indirect pattern"
+        help="Bench name in order to init DMP indirect pattern",
     )
     parser.add_argument(
-        "--dmp-notify", 
+        "--dmp-notify",
         default=None,
         action="store",
         type=str,
-        help="DMP is notified by which cache"
+        help="DMP is notified by which cache",
     )
     parser.add_argument(
         "--tlb-size",
-        default=64,
+        default=4096,
         action="store",
         type=int,
-        help="Size of first stage ArmTLB"
+        help="Size of first stage ArmTLB",
     )
     parser.add_argument(
         "--sample-stats",

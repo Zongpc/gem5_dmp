@@ -1,0 +1,14 @@
+531521338400: system.l2.prefetcher: Insert RelationTable: indexPC 7fbf6dd0b4 targetPC 7fbf6dd098 target_addr 55554aed80 shift 2 cID 0 rangeType 1 priority 2147483392
+531521340800: system.l2.prefetcher: Insert RelationTable: indexPC 7fbf6dd0b4 targetPC 7fbf6dd0bc target_addr 55554aeda8 shift 2 cID 0 rangeType 1 priority 2147483136
+531521342800: system.l2.prefetcher: Insert RelationTable: indexPC 7fbf6dd098 targetPC 7fbf6dd0a0 target_addr 55554aeda0 shift 2 cID 0 rangeType 1 priority 2147482880
+531521343600: system.l2.prefetcher: Insert RelationTable: indexPC 7fbf6dd0b4 targetPC 7fbf6dd0b4 target_addr 55554aedc8 shift 2 cID 0 rangeType 1 priority 2147482624
+531781952800: system.l2.prefetcher: Insert RelationTable: indexPC 7fbf6dca8c targetPC 7fbf6db290 target_addr 55555566e9 shift 0 cID 0 rangeType 1 priority 2147482368
+531783534800: system.l2.prefetcher: Insert RelationTable: indexPC 7fbf6dca8c targetPC 7fbf6db268 target_addr 55555566e8 shift 0 cID 0 rangeType 0 priority 1
+537208898000: system.l2.prefetcher: Insert RelationTable: indexPC 7fbf6da800 targetPC 7fbf6da824 target_addr 315 shift 0 cID 0 rangeType 1 priority 2147482112
+537208898400: system.l2.prefetcher: Insert RelationTable: indexPC 7fbf6da800 targetPC 7fbf6da838 target_addr 2ec shift 0 cID 0 rangeType 1 priority 2147481856
+537502954000: system.l2.prefetcher: Insert RelationTable: indexPC 7fbf6da800 targetPC 7fbf6da840 target_addr 68 shift 0 cID 0 rangeType 1 priority 2147481600
+537502954400: system.l2.prefetcher: Insert RelationTable: indexPC 7fbf6da800 targetPC 7fbf6da848 target_addr 2f8 shift 0 cID 0 rangeType 1 priority 2147481344
+537507347200: system.l2.prefetcher: Insert RelationTable: indexPC 7fbf6da848 targetPC 7fbf6da878 target_addr 0 shift 0 cID 0 rangeType 0 priority 2147481345
+543388712000: system.l2.prefetcher: Insert RelationTable: indexPC 7fbf6e5488 targetPC 7fbf6e548c target_addr 3b8 shift 0 cID 0 rangeType 1 priority 2147481088
+556544335600: system.l2.prefetcher: Insert RelationTable: indexPC 403b50 targetPC 403b50 target_addr 7fbc683ef8 shift 5 cID 0 rangeType 1 priority 2147480832
+557295352000: system.l2.prefetcher: Insert RelationTable: indexPC 404194 targetPC 404194 target_addr 7fb9652af8 shift 5 cID 0 rangeType 1 priority 2147480576

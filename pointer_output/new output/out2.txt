@@ -1,0 +1,13 @@
+511580781200: system.l2.prefetcher: Insert RelationTable: indexPC 7fbf6dd0b4 targetPC 7fbf6dd098 target_addr 55554aed80 shift 2 cID 0 rangeType 1 priority 2147483392
+511580784400: system.l2.prefetcher: Insert RelationTable: indexPC 7fbf6dd0b4 targetPC 7fbf6dd0bc target_addr 55554aeda8 shift 2 cID 0 rangeType 1 priority 2147483136
+511580785600: system.l2.prefetcher: Insert RelationTable: indexPC 7fbf6dd098 targetPC 7fbf6dd0a0 target_addr 55554aeda0 shift 2 cID 0 rangeType 1 priority 2147482880
+511580786800: system.l2.prefetcher: Insert RelationTable: indexPC 7fbf6dd0b4 targetPC 7fbf6dd0b4 target_addr 55554aedc8 shift 2 cID 0 rangeType 1 priority 2147482624
+523360269600: system.l2.prefetcher: Insert RelationTable: indexPC 7fbf6e5488 targetPC 7fbf6e548c target_addr 3b8 shift 0 cID 0 rangeType 1 priority 2147482368
+523532571600: system.l2.prefetcher: Insert RelationTable: indexPC 7fbf6da800 targetPC 7fbf6da824 target_addr 315 shift 0 cID 0 rangeType 1 priority 2147482112
+523555195200: system.l2.prefetcher: Insert RelationTable: indexPC 7fbf6da800 targetPC 7fbf6da840 target_addr 68 shift 0 cID 0 rangeType 0 priority 1
+524083920800: system.l2.prefetcher: Insert RelationTable: indexPC 7fbf6da800 targetPC 7fbf6da868 target_addr 2f4 shift 0 cID 0 rangeType 0 priority 1
+524516524800: system.l2.prefetcher: Insert RelationTable: indexPC 7fbf6dca8c targetPC 7fbf6db268 target_addr 55555560f0 shift 0 cID 0 rangeType 1 priority 2147481856
+524516528400: system.l2.prefetcher: Insert RelationTable: indexPC 7fbf6dca8c targetPC 7fbf6db290 target_addr 55555560f1 shift 0 cID 0 rangeType 1 priority 2147481600
+529174161600: system.l2.prefetcher: Insert RelationTable: indexPC 7fbf6da800 targetPC 7fbf6da838 target_addr 2ec shift 0 cID 0 rangeType 1 priority 2147481344
+544508991600: system.l2.prefetcher: Insert RelationTable: indexPC 402b40 targetPC 402b40 target_addr 7fbc684898 shift 5 cID 0 rangeType 1 priority 2147481088
+545252444000: system.l2.prefetcher: Insert RelationTable: indexPC 403184 targetPC 403184 target_addr 7fb9652af8 shift 5 cID 0 rangeType 1 priority 2147480832

@@ -206,7 +206,9 @@ class StridePrefetcher(QueuedPrefetcher):
     degree = Param.Int(4, "Number of prefetches to generate")
 
     table_assoc = Param.Int(4, "Associativity of the PC table")
-    table_entries = Param.MemorySize("64", "Number of entries of the PC table")
+    table_entries = Param.MemorySize(
+        "128", "Number of entries of the PC table"
+    )
     table_indexing_policy = Param.BaseIndexingPolicy(
         StridePrefetcherHashedSetAssociative(
             entry_size=1, assoc=Parent.table_assoc, size=Parent.table_entries
@@ -700,19 +702,20 @@ class PIFPrefetcher(QueuedPrefetcher):
             HWPProbeEventRetiredInsts(self, simObj, "RetiredInstsPC")
         )
 
+
 class DiffMatchingPrefetcher(StridePrefetcher):
-    type = 'DiffMatchingPrefetcher'
-    cxx_class = 'gem5::prefetch::DiffMatching'
+    type = "DiffMatchingPrefetcher"
+    cxx_class = "gem5::prefetch::DiffMatching"
     cxx_header = "mem/cache/prefetch/diff_matching.hh"
     cxx_exports = [PyBindMethod("addPfHelper")]
-                
+
     iq_ent_num = Param.Unsigned(16, "Number of entres of iq")
 
-    iddt_ent_num = Param.Unsigned(8, "Number of entries of iddt")
-    ics_ent_num = Param.Unsigned(8, "Number of entries of ics")
+    iddt_ent_num = Param.Unsigned(16, "Number of entries of iddt")
+    ics_ent_num = Param.Unsigned(16, "Number of entries of ics")
 
     tadt_ent_num = Param.Unsigned(16, "Number of entries of tadt")
-    rg_ent_num = Param.Unsigned(16, "Number of entries of RangeTable") 
+    rg_ent_num = Param.Unsigned(16, "Number of entries of RangeTable")
 
     rt_ent_num = Param.Unsigned(16, "Number of entries of rt")
 
@@ -720,11 +723,18 @@ class DiffMatchingPrefetcher(StridePrefetcher):
     detect_period = Param.Unsigned(1000, "Cycles between index pc choosing")
 
     iddt_diff_num = Param.Unsigned(12, "Number of difference entries of iddt")
-    tadt_diff_num = Param.Unsigned(10, "Number of difference entries of tadt")
+    tadt_diff_num = Param.Unsigned(6, "Number of difference entries of tadt")
 
-    ics_miss_threshold = Param.Unsigned(6, "Number of candidate pc miss threshold")
-    ics_candidate_num = Param.Unsigned(3, "Number of candidate target in ics")
-    range_group_size = Param.Unsigned(256, "Number of relations in each range group")
+    # iddt_diff_num = Param.Unsigned(8, "Number of difference entries of iddt")
+    # tadt_diff_num = Param.Unsigned(3, "Number of difference entries of tadt")
+
+    ics_miss_threshold = Param.Unsigned(
+        3, "Number of candidate pc miss threshold"
+    )
+    ics_candidate_num = Param.Unsigned(5, "Number of candidate target in ics")
+    range_group_size = Param.Unsigned(
+        256, "Number of relations in each range group"
+    )
 
     stream_ahead_dist = Param.Unsigned(
         64, "Byte-distance prefetch ahead which triggered by stream refill"
@@ -733,14 +743,12 @@ class DiffMatchingPrefetcher(StridePrefetcher):
         0, "Number of prefetchs ahead when a range target being identified"
     )
     indir_range = Param.Unsigned(
-        16, "Size of indirect prefetch range, limited by Cache blkSize" 
+        3, "Size of indirect prefetch range, limited by Cache blkSize"
     )
 
     notify_latency = Param.Unsigned(0, "Notify triggered prefetch latency")
 
-    range_unit = Param.Unsigned(
-        8, "Size of each range quantification unit"
-    )
+    range_unit = Param.Unsigned(8, "Size of each range quantification unit")
 
     range_level = Param.Unsigned(
         4, "Number of total range quantification levels"
@@ -752,11 +760,11 @@ class DiffMatchingPrefetcher(StridePrefetcher):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._monitor_simObj = NULL # Demand init by config
-        self._access_simObj = NULL # Demand init by config
-        self._fill_simObj = NULL # Demand init by config
+        self._monitor_simObj = NULL  # Demand init by config
+        self._access_simObj = NULL  # Demand init by config
+        self._fill_simObj = NULL  # Demand init by config
         self._pf_helper = []
-    
+
     def set_probe_obj(self, monitor_simObj, access_simObj, fill_simObj):
         self._monitor_simObj = monitor_simObj
         self._access_simObj = access_simObj
@@ -770,35 +778,54 @@ class DiffMatchingPrefetcher(StridePrefetcher):
     # Override BasePrefetcher::regProbeListeners
     # Register L1 request and response probelisteners
     def regProbeListeners(self):
-        # Add TLB 
+        # Add TLB
         for tlb in self._tlbs:
             self.getCCObject().addTLB(tlb.getCCObject())
-        
+
         # Add PfHelper
         for pf_helper in self._pf_helper:
             self.getCCObject().addPfHelper(pf_helper.getCCObject())
-        
 
         # Add Trigger ProbeListener
         self.getCCObject().addEventProbe(
-            self._access_simObj.getCCObject(), "Miss", False, True, False, False
-        ) 
+            self._access_simObj.getCCObject(),
+            "Miss",
+            False,
+            True,
+            False,
+            False,
+        )
         self.getCCObject().addEventProbe(
             self._fill_simObj.getCCObject(), "Fill", True, False, False, False
-        ) 
+        )
         self.getCCObject().addEventProbe(
-            self._access_simObj.getCCObject(), "Hit", False, False, False, False
-        ) 
+            self._access_simObj.getCCObject(),
+            "Hit",
+            False,
+            False,
+            False,
+            False,
+        )
 
         # Add Monitor ProbeListener
         if self._monitor_simObj:
             # Request to L1 ProbeListener
             self.getCCObject().addEventProbe(
-                self._monitor_simObj.getCCObject(), "Request", False, False, True, False
-            ) 
+                self._monitor_simObj.getCCObject(),
+                "Request",
+                False,
+                False,
+                True,
+                False,
+            )
             # Response from L1 ProbeListener
             self.getCCObject().addEventProbe(
-                self._monitor_simObj.getCCObject(), "Response", False, False, False, True
+                self._monitor_simObj.getCCObject(),
+                "Response",
+                False,
+                False,
+                False,
+                True,
             )
         else:
             print("No valid Monitor SimObj !")

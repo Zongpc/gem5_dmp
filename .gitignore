@@ -33,3 +33,27 @@ configs/dram/lowp_sweep.cfg
 .pyenv
 .vscode
 dmp_*
+pointer_output/new output/out9.txt
+pointer_output/new output/out26.txt
+pointer_output/out.txt
+huibian.asm
+HWP.log
+HWP1.log
+DMP.log
+pointer_output/new output/out20.txt
+pointer_output/new output/out23.txt
+pointer_output/new output/out29.txt
+pointer_output/new output/out24.txt
+Cache1.log
+pointer_output/new output/out25.txt
+pointer_output/new output/out10.txt
+pointer_output/new output/out11.txt
+pointer_output/new output/out15.txt
+pointer_output/out1.txt
+Cache.log
+pointer_output/new output/out28.txt
+pointer_output/new output/out21.txt
+mchashjoins
+DMP1.log
+pointer_output/new output/out27.txt
+.history

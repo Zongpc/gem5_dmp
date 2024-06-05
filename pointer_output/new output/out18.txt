@@ -1,0 +1,5 @@
+559164772000: system.l2.prefetcher: Insert RelationTable: indexPC 400e38 targetPC 400e70 target_addr 7fb965a058 shift 5 cID 0 rangeType 1 priority 2147483392
+559165530000: system.l2.prefetcher: Insert RelationTable: indexPC 400e70 targetPC 400e44 target_addr 4 shift 0 cID 0 rangeType 0 priority 2147483393
+559165530400: system.l2.prefetcher: Insert RelationTable: indexPC 400e70 targetPC 400e50 target_addr 8 shift 0 cID 0 rangeType 0 priority 2147483393
+559165530800: system.l2.prefetcher: Insert RelationTable: indexPC 400e70 targetPC 400e64 target_addr 10 shift 0 cID 0 rangeType 0 priority 2147483393
+559165531200: system.l2.prefetcher: Insert RelationTable: indexPC 400e70 targetPC 400e70 target_addr 18 shift 0 cID 0 rangeType 0 priority 2147483393

@@ -31,9 +31,9 @@ class DiffMatching : public Stride
 
     const int iddt_ent_num;
     const int tadt_ent_num;
-    const int iq_ent_num;
-    const int rg_ent_num;
-    const int ics_ent_num;
+    const int iq_ent_num;//Index Queue
+    const int rg_ent_num;//Range Table
+    const int ics_ent_num;//Indirect Candidate Scoreboard(ICS)
     const int rt_ent_num;
 
     // indirect range prefetch length
@@ -47,7 +47,7 @@ class DiffMatching : public Stride
     int32_t range_group_size;
 
     // possiable shift values
-    const unsigned int shift_v[4] = {0, 1, 2, 3};
+    const unsigned int shift_v[6] = {0, 1, 2, 3, 4, 5};
 
     /** IDDT and TDDT */
     const int iddt_diff_num;
@@ -59,8 +59,11 @@ class DiffMatching : public Stride
         Addr pc;
         bool valid;
         bool ready;
+        bool is_pointer_chase;
+        bool is_finish_pochase;
         ContextID cID;
         T last;
+        T last_value;
 
         int diff_ptr;
         const int diff_size;
@@ -70,8 +73,8 @@ class DiffMatching : public Stride
 
         // normal constructor
         DiffSeqCollection(Addr pc, T last, int diff_size)
-          : pc(pc), valid(false), ready(false), cID(0), 
-            last(last), diff_ptr(0), diff_size(diff_size) 
+          : pc(pc), valid(false), ready(false),is_pointer_chase(false),is_finish_pochase(false),cID(0),
+            last(last), last_value(-4096),diff_ptr(0), diff_size(diff_size)
         {
             diff.reserve(diff_size);
         };
@@ -109,15 +112,36 @@ class DiffMatching : public Stride
             last = last_in;
         };
 
+        void update_last_value(T last_in)
+        {
+            last_value=last_in;
+        };
+
+        void update_pointer_chase()
+        {
+            is_pointer_chase=true;
+        };
+
+        void update_finish()
+        {
+            is_finish_pochase=true;
+        };
+
         bool isReady() const { return ready; };
 
         bool isValid() const { return valid; };
 
-        Addr getPC() const { return pc; }; 
+        bool isPointer() const {return is_pointer_chase;};
+
+        bool isFinish() const {return is_finish_pochase;};
+
+        Addr getPC() const { return pc; };
 
         ContextID getContextId() const { return cID; };
 
         T getLast() const {return last; };
+
+        T getValue() const {return last_value;};
 
         T operator[](int index) const { return diff[ (diff_ptr+index) % diff_size ]; };
 
@@ -125,14 +149,18 @@ class DiffMatching : public Stride
         {
             pc = pc_new;
             last = last_new;
+            last_value=-4096;
             cID = cID_new;
             ready = false;
             valid = false;
+            is_pointer_chase=false;
+            is_finish_pochase=false;
             diff_ptr = 0;
             diff.clear();
             return *this;
         };
     };
+
 
     typedef DiffSeqCollection<IndexData> iddt_ent_t;
     typedef DiffSeqCollection<TargetAddr> tadt_ent_t;
@@ -145,17 +173,17 @@ class DiffMatching : public Stride
 
     void insertIDDT(Addr index_pc_in, ContextID cID_in);
     void insertTADT(Addr target_pc_in, ContextID cID_in);
-
+    bool offsetFilter(tadt_ent_t& tadt_ent,Addr req_addr);
     /** RangeTable related */
 
     /** Range quantification method
     * eg. unit=8, level=4
     * level:   |  1  |  2  |  3  |  4  |
     * unti:    |  u  |  u  |  u  |  u  |
-    * range:   0     8     16    24    32 
+    * range:   0     8     16    24    32
     */
     const int range_unit_param; // quantify true range to several units
-    const int range_level_param; // total levels of range quant unit 
+    const int range_level_param; // total levels of range quant unit
 
     struct RangeTableEntry
     {
@@ -166,9 +194,9 @@ class DiffMatching : public Stride
         bool valid;
 
         int shift_times; // 0 (byte) / 2 (int) / 3 (double)
-        
+
         const int range_quant_unit; // quantify true range to several units
-        const int range_quant_level; // total levels of range quant unit 
+        const int range_quant_level; // total levels of range quant unit
 
         // NOTE: Range prefetch distence should coorparate wit StreamPrefetch
         // NOTE: [TODO] more suitable RangePrefetc schedule policy
@@ -177,27 +205,27 @@ class DiffMatching : public Stride
         // normal constructor
         RangeTableEntry(
                 Addr target_pc, Addr req_addr, int shift_times, int rql, int rqu
-            ) : target_pc(target_pc), cur_tail{req_addr, MaxAddr}, 
-                cur_count(0), cID(0), valid(false), shift_times(shift_times), 
-                range_quant_unit(rqu), range_quant_level(rql), 
+            ) : target_pc(target_pc), cur_tail{req_addr, MaxAddr},
+                cur_count(0), cID(0), valid(false), shift_times(shift_times),
+                range_quant_unit(rqu), range_quant_level(rql),
                 sample_count(rql) {}
 
         // init constructor
         RangeTableEntry(int rqu, int rql, bool valid = false)
-          : valid(valid), range_quant_unit(rqu), range_quant_level(rql), 
+          : valid(valid), range_quant_unit(rqu), range_quant_level(rql),
             sample_count(rql) {};
 
         ~RangeTableEntry() = default;
 
-        bool updateSample(Addr addr_in); 
+        bool updateSample(Addr addr_in);
 
         void validate() { valid = true; };
 
-        void invalidate() { 
-            valid = false; 
-            std::fill(sample_count.begin(), sample_count.end(), 0); 
+        void invalidate() {
+            valid = false;
+            std::fill(sample_count.begin(), sample_count.end(), 0);
         };
-        
+
         bool getRangeType() const;
 
         int getPredLevel() const {
@@ -218,7 +246,7 @@ class DiffMatching : public Stride
             cID = cID_in;
             valid = false;
             shift_times = shift_times_in;
-            std::fill(sample_count.begin(), sample_count.end(), 0); 
+            std::fill(sample_count.begin(), sample_count.end(), 0);
             return *this;
         }
     };
@@ -242,8 +270,8 @@ class DiffMatching : public Stride
         int matched;
 
         // normal constructor
-        IndexQueueEntry(Addr pc_in) 
-          : index_pc(pc_in), cID(0), valid(false), 
+        IndexQueueEntry(Addr pc_in)
+          : index_pc(pc_in), cID(0), valid(false),
             tried(0), matched(0) {};
 
         // init constructor
@@ -345,8 +373,8 @@ class DiffMatching : public Stride
 
         // normal constructor
         RTEntry(
-            Addr index_pc, Addr target_pc, Addr target_base_addr, 
-            unsigned int shift, bool range, int range_degree, 
+            Addr index_pc, Addr target_pc, Addr target_base_addr,
+            unsigned int shift, bool range, int range_degree,
             ContextID cID, int32_t priority
         ) : index_pc(index_pc), target_pc(target_pc), target_base_addr(target_base_addr),
             shift(shift), range(range), range_degree(range_degree), cID(cID), valid(false),
@@ -370,6 +398,7 @@ class DiffMatching : public Stride
             int range_degree_in,
             ContextID cID_in,
             bool valid_in,
+            bool is_pointer_in,
             int32_t priority_in
         ) {
             index_pc = index_pc_in;
@@ -381,21 +410,21 @@ class DiffMatching : public Stride
             cID = cID_in;
             valid = valid_in;
             priority = priority_in;
-            
+
             return *this;
         };
     };
     std::vector<RTEntry> relationTable;
 
     // point to the next update position
-    int rt_ptr; 
+    int rt_ptr;
 
-    bool findRTE(Addr index_pc, Addr target_pc, ContextID cID);
+    bool findRTE(Addr index_pc, const tadt_ent_t& tadt_ent_match, ContextID cID);
 
     bool checkRedundantRTE(Addr index_pc, Addr target_base_addr, ContextID cID);
 
     void insertRT(
-        const iddt_ent_t& iddt_ent_match, const tadt_ent_t& tadt_ent_match,
+        const iddt_ent_t& iddt_ent_match,tadt_ent_t& tadt_ent_match,
         int iddt_match_point, unsigned int shift, ContextID cID
     );
 
@@ -425,7 +454,7 @@ class DiffMatching : public Stride
 
   protected:
 
-    void diffMatching(const tadt_ent_t& tadt_ent);
+    void diffMatching(tadt_ent_t& tadt_ent);
 
     void callReadytoIssue(const PrefetchInfo& pfi) override;
 
@@ -444,7 +473,7 @@ class DiffMatching : public Stride
     // Probe DataResp from L1 for prefetch detection
     void notifyL1Resp(const PacketPtr &pkt) override;
 
-    void insertIndirectPrefetch(Addr pf_addr, Addr target_pc, 
+    void insertIndirectPrefetch(Addr pf_addr, Addr target_pc,
                                 ContextID cID, int32_t priority);
 
     void addPfHelper(Stride* s);
