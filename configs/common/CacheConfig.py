@@ -120,8 +120,8 @@ def config_cache(options, system):
         try:
             #import cores.arm.O3_ARM_v7a_three_level as core
             #import cores.arm.O3_ARM_v7a_paper as core
-            #import cores.arm.O3_ARM_v7a_CortexA15 as core
-            import cores.arm.O3_ARM_v7a_N1 as core
+            import cores.arm.O3_ARM_v7a_CortexA15 as core
+            #import cores.arm.O3_ARM_v7a_N1 as core
         except:
             print("O3_ARM_v7a_3 is unavailable. Did you compile the O3 model?")
             sys.exit(1)
@@ -241,7 +241,7 @@ def config_cache(options, system):
                 # system.l2.prefetcher.queue_size = 1024*1024*16
                 # system.l2.prefetcher.max_prefetch_requests_with_pending_translation = 1024
 
-                system.cpu[i].dcache.prefetcher.auto_detect = False
+                system.cpu[i].dcache.prefetcher.auto_detect = True
 
                 if options.dmp_init_bench:
                     system.cpu[i].dcache.prefetcher.index_pc_init = \

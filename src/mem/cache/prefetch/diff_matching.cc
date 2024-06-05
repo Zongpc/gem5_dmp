@@ -34,6 +34,7 @@ DiffMatching::DiffMatching(const DiffMatchingPrefetcherParams &p)
     notify_latency(p.notify_latency),
     cur_range_priority(0),
     range_group_size(p.range_group_size),
+    range_count(0),
     iddt_diff_num(p.iddt_diff_num),
     tadt_diff_num(p.tadt_diff_num),
     indexDataDeltaTable(p.iddt_ent_num, iddt_ent_t(p.iddt_diff_num, false)),
@@ -502,6 +503,7 @@ DiffMatching::insertRT(
     if (new_range_type) {
         priority = cur_range_priority;
         cur_range_priority -= range_group_size;
+        range_count++;
 
         for (auto& rt_ent : relationTable) {
             if (rt_ent.valid && rt_ent.index_pc == new_target_pc) {
@@ -999,6 +1001,7 @@ DiffMatching::pfReplaceHook(Addr pc)
 
         if (replace_count_level_2 > replace_threshold_level_2) {
             range_ahead_dist_level_2 = range_ahead_init_level_2;
+            // range_ahead_dist_level_1 = range_ahead_init_level_1;
         }
     }
 }
@@ -1061,7 +1064,7 @@ DiffMatching::notify (const PacketPtr &pkt, const PrefetchInfo &pfi)
                     d = (range_ahead_buffer_level_1 > 0) ? 4 : 0;
                     range_ahead_buffer_level_1 = 0;
                     range_ahead_dist_level_1 += d;
-                    // range_ahead_dist_level_1 = (range_ahead_dist_level_1 > 24) ? 24 : range_ahead_dist_level_1;
+                    range_ahead_dist_level_1 = (range_ahead_dist_level_1 > 64) ? 64 : range_ahead_dist_level_1;
 
                     // reset upper level
                     replace_count_level_2 = 0;
@@ -1070,7 +1073,7 @@ DiffMatching::notify (const PacketPtr &pkt, const PrefetchInfo &pfi)
                     d = (range_ahead_buffer_level_2 > 0) ? 4 : 0;
                     range_ahead_buffer_level_2 = 0;
                     range_ahead_dist_level_2 += d;
-                    // range_ahead_dist_level_2 = (range_ahead_dist_level_2 > 40) ? 40 : range_ahead_dist_level_2;
+                    range_ahead_dist_level_2 = (range_ahead_dist_level_2 > 64) ? 64 : range_ahead_dist_level_2;
 
                     // reset zero level
                     range_ahead_dist_level_1 = range_ahead_init_level_1;
@@ -1081,7 +1084,7 @@ DiffMatching::notify (const PacketPtr &pkt, const PrefetchInfo &pfi)
                     if (try_cache_blk != nullptr && try_cache_blk->data ) {
                         // notifyFill(pkt, try_cache_blk->data);
                         Addr ahead_addr = pkt->req->getVaddr() + ahead;
-                        if (range_level == 0) {
+                        if (range_level == 0 && range_count > 1) {
                             if (ahead_addr < upper_400ca0) {
                                 hitTrigger(pc, ahead_addr, try_cache_blk->data, true);
                             }

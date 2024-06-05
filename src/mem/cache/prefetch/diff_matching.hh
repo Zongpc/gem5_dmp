@@ -54,6 +54,7 @@ class DiffMatching : public Stride
     // priority init
     int32_t cur_range_priority;
     int32_t range_group_size;
+    int range_count;
 
     // possiable shift values
     const unsigned int shift_v[4] = {0, 1, 2, 3};
