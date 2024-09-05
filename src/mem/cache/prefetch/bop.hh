@@ -157,7 +157,7 @@ class BOP : public Queued
         ~BOP() = default;
 
         void calculatePrefetch(const PrefetchInfo &pfi,
-                               std::vector<AddrPriority> &addresses) override;
+                                std::vector<AddrPriority> &addresses) override;
 };
 
 } // namespace prefetch

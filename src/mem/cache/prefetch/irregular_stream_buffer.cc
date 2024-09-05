@@ -39,34 +39,48 @@ GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
 namespace prefetch
 {
 
+// 构造函数，初始化IrregularStreamBuffer对象
 IrregularStreamBuffer::IrregularStreamBuffer(
     const IrregularStreamBufferPrefetcherParams &p)
-  : Queued(p),
+  // 初始化基类Queued和成员变量
+    : Queued(p),
     chunkSize(p.chunk_size),
     prefetchCandidatesPerEntry(p.prefetch_candidates_per_entry),
     degree(p.degree),
+    // 使用参数初始化trainingUnit
     trainingUnit(p.training_unit_assoc, p.training_unit_entries,
-                 p.training_unit_indexing_policy,
-                 p.training_unit_replacement_policy),
+                p.training_unit_indexing_policy,
+                p.training_unit_replacement_policy),
+    // 使用参数和AddressMappingEntry对象初始化psAddressMappingCache
     psAddressMappingCache(p.address_map_cache_assoc,
-                          p.address_map_cache_entries,
-                          p.ps_address_map_cache_indexing_policy,
-                          p.ps_address_map_cache_replacement_policy,
-                          AddressMappingEntry(prefetchCandidatesPerEntry,
-                                              p.num_counter_bits)),
+                        p.address_map_cache_entries,
+                        p.ps_address_map_cache_indexing_policy,
+                        p.ps_address_map_cache_replacement_policy,
+                        AddressMappingEntry(prefetchCandidatesPerEntry,
+                                            p.num_counter_bits)),
+    // 使用参数和AddressMappingEntry对象初始化spAddressMappingCache
     spAddressMappingCache(p.address_map_cache_assoc,
-                          p.address_map_cache_entries,
-                          p.sp_address_map_cache_indexing_policy,
-                          p.sp_address_map_cache_replacement_policy,
-                          AddressMappingEntry(prefetchCandidatesPerEntry,
-                                              p.num_counter_bits)),
+                        p.address_map_cache_entries,
+                        p.sp_address_map_cache_indexing_policy,
+                        p.sp_address_map_cache_replacement_policy,
+                        AddressMappingEntry(prefetchCandidatesPerEntry,
+                                            p.num_counter_bits)),
+    // 初始化structuralAddressCounter为0
     structuralAddressCounter(0)
 {
+    // 确保prefetchCandidatesPerEntry是2的幂
     assert(isPowerOf2(prefetchCandidatesPerEntry));
 }
 
-void
-IrregularStreamBuffer::calculatePrefetch(const PrefetchInfo &pfi,
+/**
+ * @brief 计算预取地址
+ * 
+ * 此函数根据给定的预取信息计算潜在的预取地址，并将其添加到预取地址向量中。
+ * 
+ * @param pfi 预取信息，包括PC、访问地址等
+ * @param addresses 输出参数，用于存储计算出的预取地址
+ */
+void IrregularStreamBuffer::calculatePrefetch(const PrefetchInfo &pfi,
     std::vector<AddrPriority> &addresses)
 {
     // This prefetcher requires a PC
@@ -172,43 +186,70 @@ IrregularStreamBuffer::calculatePrefetch(const PrefetchInfo &pfi,
     }
 }
 
+// 根据物理地址和是否安全，获取不规则流缓冲区的地址映射
 IrregularStreamBuffer::AddressMapping&
 IrregularStreamBuffer::getPSMapping(Addr paddr, bool is_secure)
 {
+    // 计算AMC地址，用于定位到PS-AMC中的特定条目
     Addr amc_address = paddr / prefetchCandidatesPerEntry;
+    // 计算映射索引，用于定位到PS-AMC条目中的特定映射
     Addr map_index   = paddr % prefetchCandidatesPerEntry;
+    // 试图在缓存中找到对应的PS-AMC条目
     AddressMappingEntry *ps_entry =
         psAddressMappingCache.findEntry(amc_address, is_secure);
     if (ps_entry != nullptr) {
-        // A PS-AMC line already exists
+        // 如果已经存在PS-AMC条目，则访问该条目以更新其访问状态
         psAddressMappingCache.accessEntry(ps_entry);
     } else {
+        // 如果不存在，则在缓存中找到一个牺牲品条目以存储新的映射
         ps_entry = psAddressMappingCache.findVictim(amc_address);
         assert(ps_entry != nullptr);
 
+        // 插入新的PS-AMC条目到缓存中
         psAddressMappingCache.insertEntry(amc_address, is_secure, ps_entry);
     }
+    // 返回找到或插入的条目中的特定映射
     return ps_entry->mappings[map_index];
 }
 
-void
-IrregularStreamBuffer::addStructuralToPhysicalEntry(
+/// 在结构化到物理地址的映射表中添加一个条目。
+///
+/// 本函数负责将虚拟地址（结构化地址）映射到物理地址，以便进行有效的内存访问。
+/// 它处理了地址映射的细节，包括如何在缓存中找到或插入映射条目。
+///
+/// @param structural_address 虚拟地址，需要映射的结构化地址。
+/// @param is_secure 标识该地址是否属于安全上下文。
+/// @param physical_address 物理地址，结构化地址将映射到这个物理地址。
+void IrregularStreamBuffer::addStructuralToPhysicalEntry(
     Addr structural_address, bool is_secure, Addr physical_address)
 {
+    // 计算AMC（Address Mapping Cache）地址，用于索引映射条目。
     Addr amc_address = structural_address / prefetchCandidatesPerEntry;
+    // 计算映射条目内的索引。
     Addr map_index   = structural_address % prefetchCandidatesPerEntry;
+
+    // 尝试在AMC中找到对应的条目。
     AddressMappingEntry *sp_entry =
         spAddressMappingCache.findEntry(amc_address, is_secure);
+
+    // 如果找到了条目，则访问它以更新其访问频率。
     if (sp_entry != nullptr) {
         spAddressMappingCache.accessEntry(sp_entry);
     } else {
+        // 如果未找到条目，尝试在AMC中找到一个空闲位置（受害者）。
         sp_entry = spAddressMappingCache.findVictim(amc_address);
+        // 确保找到了一个空闲位置。
         assert(sp_entry != nullptr);
 
+        // 在AMC中插入新的映射条目。
         spAddressMappingCache.insertEntry(amc_address, is_secure, sp_entry);
     }
+
+    // 获取映射条目以更新。
     AddressMapping &mapping = sp_entry->mappings[map_index];
+    // 更新物理地址。
     mapping.address = physical_address;
+    // 重置并递增计数器，以跟踪该映射条目的访问频率。
     mapping.counter.reset();
     mapping.counter++;
 }

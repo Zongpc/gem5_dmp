@@ -37,16 +37,27 @@ GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
 namespace prefetch
 {
 
+// 构造函数：初始化SlimAMPM类的实例
+// 参数 p: SlimAMPMPrefetcherParams类型的引用，包含必要的参数用于初始化
 SlimAMPM::SlimAMPM(const SlimAMPMPrefetcherParams &p)
-  : Queued(p), ampm(*p.ampm), dcpt(*p.dcpt)
+  : Queued(p), // 初始化基类Queued
+    ampm(*p.ampm), // 初始化ampm成员变量
+    dcpt(*p.dcpt) // 初始化dcpt成员变量
 {
 }
+
+// SlimAMPM类中的预取地址计算函数
+// 函数首先尝试通过dcpt成员进行预取计算，若未获得预取地址，则利用ampm成员进行二次计算
+// 结合两种预取机制，以提升预取的准确度与范围
 
 void
 SlimAMPM::calculatePrefetch(const PrefetchInfo &pfi,
                   std::vector<AddrPriority> &addresses)
 {
+    // 使用dcpt策略计算预取地址
     dcpt.calculatePrefetch(pfi, addresses);
+    
+    // 若dcpt未能找到预取地址，尝试使用ampm策略进行计算
     if (addresses.empty()) {
         ampm.calculatePrefetch(pfi, addresses);
     }

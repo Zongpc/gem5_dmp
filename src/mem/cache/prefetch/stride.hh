@@ -170,7 +170,7 @@ class Stride : public Queued
     bool checkStride(Addr addr) const;
 
     void calculatePrefetch(const PrefetchInfo &pfi,
-                           std::vector<AddrPriority> &addresses) override;
+                          std::vector<AddrPriority> &addresses) override;
 };
 
 } // namespace prefetch

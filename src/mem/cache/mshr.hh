@@ -81,7 +81,7 @@ class MSHR : public QueueEntry, public Printable
     friend class Queue;
     friend class MSHRQueue;
 
-  private:
+    private:
 
     /** Flag set by downstream caches */
     bool downstreamPending;
@@ -110,6 +110,15 @@ class MSHR : public QueueEntry, public Printable
      * writability rather than having separate pendingDirty and
      * pendingWritable flags.
      */
+    /**
+     * 我们使用这个标志来跟踪是否已经清除了来自上级缓存的 MSHR（内存系统请求记录）中的下游Pending标志，
+     * 其中这个包起源于该缓存，并且保护非首次尝试清除它。
+     *
+     * 标志 markedPending 需要在 TargetList 正在服务时进行更新，这可以发生在以下情况：
+     * 1) 在 Target 实例化期间，如果 MSHR 正在服务并且 Target 没有被延迟，
+     * 2) 当 MSHR 开始服务时，如果 Target 没有被延迟，
+     * 3) 或者当 TargetList 被提升（从 deferredTargets 到 targets）时。
+     */
     bool pendingModified;
 
     /** Did we snoop an invalidate while waiting for data? */
@@ -118,7 +127,7 @@ class MSHR : public QueueEntry, public Printable
     /** Did we snoop a read while waiting for data? */
     bool postDowngrade;
 
-  public:
+    public:
 
     /** Track if we sent this as a whole line write or not */
     bool wasWholeLineWrite;
@@ -128,7 +137,7 @@ class MSHR : public QueueEntry, public Printable
 
     class Target : public QueueEntry::Target
     {
-      public:
+        public:
 
         enum Source
         {
@@ -160,16 +169,16 @@ class MSHR : public QueueEntry, public Printable
                                   //!< target list allocate in the cache?
 
         Target(PacketPtr _pkt, Tick _readyTime, Counter _order,
-               Source _source, bool _markedPending, bool alloc_on_fill)
+                Source _source, bool _markedPending, bool alloc_on_fill)
             : QueueEntry::Target(_pkt, _readyTime, _order), source(_source),
-              markedPending(_markedPending), allocOnFill(alloc_on_fill)
+                markedPending(_markedPending), allocOnFill(alloc_on_fill)
         {}
     };
 
     class TargetList : public std::list<Target>, public Named
     {
 
-      public:
+        public:
         bool needsWritable;
         bool hasUpgrade;
         /** Set when the response should allocate on fill */
@@ -191,7 +200,7 @@ class MSHR : public QueueEntry, public Printable
          * @param alloc_on_fill Whether the pkt would allocate on a fill
          */
         void updateFlags(PacketPtr pkt, Target::Source source,
-                         bool alloc_on_fill);
+                            bool alloc_on_fill);
 
         /**
          * Reset state

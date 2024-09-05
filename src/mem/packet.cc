@@ -106,7 +106,7 @@ MemCmd::commandInfo[] =
             SoftPFResp, "SoftPFReq" },
     /* SoftPFExReq */
     { {IsRead, NeedsWritable, IsInvalidate, IsRequest,
-           IsSWPrefetch, NeedsResponse}, SoftPFResp, "SoftPFExReq" },
+        IsSWPrefetch, NeedsResponse}, SoftPFResp, "SoftPFExReq" },
     /* HardPFReq */
     { {IsRead, IsRequest, IsHWPrefetch, NeedsResponse, FromCache},
             HardPFResp, "HardPFReq" },
@@ -122,13 +122,13 @@ MemCmd::commandInfo[] =
             FromCache}, UpgradeResp, "UpgradeReq" },
     /* SCUpgradeReq: response could be UpgradeResp or UpgradeFailResp */
     { {IsInvalidate, NeedsWritable, IsUpgrade, IsLlsc,
-           IsRequest, NeedsResponse, FromCache},
+        IsRequest, NeedsResponse, FromCache},
             UpgradeResp, "SCUpgradeReq" },
     /* UpgradeResp */
     { {IsUpgrade, IsResponse}, InvalidCmd, "UpgradeResp" },
     /* SCUpgradeFailReq: generates UpgradeFailResp but still gets the data */
     { {IsRead, NeedsWritable, IsInvalidate,
-           IsLlsc, IsRequest, NeedsResponse, FromCache},
+        IsLlsc, IsRequest, NeedsResponse, FromCache},
             UpgradeFailResp, "SCUpgradeFailReq" },
     /* UpgradeFailResp - Behaves like a ReadExReq, but notifies an SC
      * that it has failed, acquires line as Dirty*/
@@ -137,7 +137,7 @@ MemCmd::commandInfo[] =
      * and the response is guaranteed to be writeable (exclusive or
      * even modified} */
     { {IsRead, NeedsWritable, IsInvalidate, IsRequest, NeedsResponse,
-          FromCache}, ReadExResp, "ReadExReq" },
+        FromCache}, ReadExResp, "ReadExReq" },
     /* ReadExResp - Response matching a read exclusive, as we check
      * the need for exclusive also on responses */
     { {IsRead, IsResponse, HasData}, InvalidCmd, "ReadExResp" },
@@ -157,7 +157,7 @@ MemCmd::commandInfo[] =
             ReadResp, "LoadLockedReq" },
     /* StoreCondReq */
     { {IsWrite, NeedsWritable, IsLlsc,
-           IsRequest, NeedsResponse, HasData},
+        IsRequest, NeedsResponse, HasData},
             StoreCondResp, "StoreCondReq" },
     /* StoreCondFailReq: generates failing StoreCondResp */
     { {IsWrite, NeedsWritable, IsLlsc, IsRequest, NeedsResponse, HasData},
@@ -173,7 +173,7 @@ MemCmd::commandInfo[] =
             InvalidCmd, "LockedRMWReadResp" },
     /* LockedRMWWriteReq */
     { {IsWrite, IsLockedRMW, NeedsWritable, IsRequest, NeedsResponse,
-           HasData}, LockedRMWWriteResp, "LockedRMWWriteReq" },
+        HasData}, LockedRMWWriteResp, "LockedRMWWriteReq" },
     /* LockedRMWWriteResp */
     { {IsWrite, IsLockedRMW, NeedsWritable, IsResponse},
             InvalidCmd, "LockedRMWWriteResp" },
@@ -193,23 +193,23 @@ MemCmd::commandInfo[] =
     /* MemFenceResp -- for synchronization responses */
     {{IsResponse}, InvalidCmd, "MemFenceResp"},
     /* Cache Clean Request -- Update with the latest data all existing
-       copies of the block down to the point indicated by the
+        copies of the block down to the point indicated by the
        request */
     { {IsRequest, IsClean, NeedsResponse, FromCache},
-      CleanSharedResp, "CleanSharedReq" },
+        CleanSharedResp, "CleanSharedReq" },
     /* Cache Clean Response - Indicates that all caches up to the
-       specified point of reference have a up-to-date copy of the
+        specified point of reference have a up-to-date copy of the
        cache block or no copy at all */
     { {IsResponse, IsClean}, InvalidCmd, "CleanSharedResp" },
     /* Cache Clean and Invalidate Request -- Invalidate all existing
        copies down to the point indicated by the request */
     { {IsRequest, IsInvalidate, IsClean, NeedsResponse, FromCache},
-      CleanInvalidResp, "CleanInvalidReq" },
-     /* Cache Clean and Invalidate Respose -- Indicates that no cache
+        CleanInvalidResp, "CleanInvalidReq" },
+        /* Cache Clean and Invalidate Respose -- Indicates that no cache
         above the specified point holds the block and that the block
         was written to a memory below the specified point. */
     { {IsResponse, IsInvalidate, IsClean},
-      InvalidCmd, "CleanInvalidResp" },
+        InvalidCmd, "CleanInvalidResp" },
     /* InvalidDestError  -- packet dest field invalid */
     { {IsResponse, IsError}, InvalidCmd, "InvalidDestError" },
     /* BadAddressError   -- memory address invalid */
@@ -228,10 +228,10 @@ MemCmd::commandInfo[] =
     { {IsRequest, IsFlush, NeedsWritable}, InvalidCmd, "FlushReq" },
     /* Invalidation Request */
     { {IsInvalidate, IsRequest, NeedsWritable, NeedsResponse, FromCache},
-      InvalidateResp, "InvalidateReq" },
+        InvalidateResp, "InvalidateReq" },
     /* Invalidation Response */
     { {IsInvalidate, IsResponse},
-      InvalidCmd, "InvalidateResp" },
+        InvalidCmd, "InvalidateResp" },
       // hardware transactional memory
     { {IsRead, IsRequest, NeedsResponse}, HTMReqResp, "HTMReq" },
     { {IsRead, IsResponse}, InvalidCmd, "HTMReqResp" },
@@ -366,18 +366,18 @@ Packet::setUintX(uint64_t w, ByteOrder endian)
 
 void
 Packet::print(std::ostream &o, const int verbosity,
-              const std::string &prefix) const
+                const std::string &prefix) const
 {
     ccprintf(o, "%s%s [%x:%x] [PC:0x%x] [ReqVA:0x%x] %s%s%s%s%s%s", prefix, cmdString(),
-             getAddr(), getAddr() + getSize() - 1,
-             req->hasPC() ? req->getPC() : 0,
-             req->hasVaddr() ? req->getVaddr() : 0,
-             req->isSecure() ? " (s)" : "",
-             req->isInstFetch() ? " IF" : "",
-             req->isUncacheable() ? " UC" : "",
-             isExpressSnoop() ? " ES" : "",
-             req->isToPOC() ? " PoC" : "",
-             req->isToPOU() ? " PoU" : "");
+                getAddr(), getAddr() + getSize() - 1,
+                req->hasPC() ? req->getPC() : 0,
+                req->hasVaddr() ? req->getVaddr() : 0,
+                req->isSecure() ? " (s)" : "",
+                req->isInstFetch() ? " IF" : "",
+                req->isUncacheable() ? " UC" : "",
+                isExpressSnoop() ? " ES" : "",
+                req->isToPOC() ? " PoC" : "",
+                req->isToPOU() ? " PoU" : "");
 }
 
 std::string
@@ -398,7 +398,7 @@ bool
 Packet::matchBlockAddr(const PacketPtr pkt, const int blk_size) const
 {
     return matchBlockAddr(pkt->getBlockAddr(blk_size), pkt->isSecure(),
-                          blk_size);
+                            blk_size);
 }
 
 bool

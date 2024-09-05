@@ -3,16 +3,16 @@
 GEM5_PATH=".."
 GEM5_ARCH="ARM"
 GEM5_BIN="$GEM5_PATH/build/$GEM5_ARCH/gem5.opt"
-SW_PATH="aarch-system-20220707"
+SW_PATH="tar"
 
-CHECKPOINT="fs_as-caida_m5out"
+# CHECKPOINT="m5out"
 DEBUG_FLAG_ARR=(
 #    "TLB,TLBVerbose"
     "HWPrefetch,HWPrefetchQueue"
     "Cache,CacheVerbose,CachePort"
-    "RequestSlot"
-    "PacketQueue"
-    "CoherentXBar"
+#    "RequestSlot"
+#    "PacketQueue"
+#    "CoherentXBar"
     "DMP"
 )
 
@@ -28,8 +28,8 @@ function gem5_run() {
     cd $RUN_LABEL
     local LGEM5_PATH="../${GEM5_PATH}"
     local LGEM5_BIN="../${GEM5_BIN}"
-    local LSW_PATH="../${SW_PATH}" 
-    local LCHECKPOINT="../${CHECKPOINT}"
+    local LSW_PATH="../../${SW_PATH}" 
+    local LCHECKPOINT="/home/luoqiang/xymc/gem5_dda/m5out"
 
     $LGEM5_BIN --debug-flags=$1 \
         ${LGEM5_PATH}/configs/dmp_pf/fs.py \
@@ -40,11 +40,11 @@ function gem5_run() {
         --l1i_size 64kB --l1d_size 32kB --l2_size 256kB \
         --l1i_assoc 8 --l1d_assoc 8 --l2_assoc 16 --cacheline_size 64 \
         --l2_repl_policy LRURP \
-        --l2-hwp-type DiffMatchingPrefetcher \
+        --l1d-hwp-type DiffMatchingPrefetcher \
         --mem-type SimpleMemory --mem-size 8GB \
-        --kernel=$LSW_PATH/binaries/vmlinux.arm64 \
-        --bootloader=$LSW_PATH/binaries/boot.arm64 \
-        --disk-image=$LSW_PATH/disks/ubuntu-18.04-arm64-docker.img \
+        --kernel=../../tar/binaries/vmlinux.arm64 \
+        --bootloader=../../tar/binaries/boot.arm64 \
+        --disk-image=../../tar/ubuntu-18.04-arm64-docker.img \
         --script=spmv_csr.rcS \
         --restore-with-cpu O3_ARM_v7a_3 \
         --checkpoint-dir $LCHECKPOINT -r 1 \

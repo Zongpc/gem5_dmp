@@ -76,7 +76,7 @@ class MemCmd
 {
     friend class Packet;
 
-  public:
+    public:
     /**
      * List of all commands associated with a packet.
      */
@@ -151,7 +151,7 @@ class MemCmd
         NUM_MEM_CMDS
     };
 
-  private:
+    private:
     /**
      * List of command attributes.
      */
@@ -211,7 +211,7 @@ class MemCmd
     /// Array to map Command enum to associated info.
     static const CommandInfo commandInfo[];
 
-  private:
+    private:
 
     Command cmd;
 
@@ -221,7 +221,7 @@ class MemCmd
         return commandInfo[cmd].attributes[attrib] != 0;
     }
 
-  public:
+    public:
 
     bool isRead() const            { return testCmdAttrib(IsRead); }
     bool isWrite() const           { return testCmdAttrib(IsWrite); }
@@ -246,13 +246,14 @@ class MemCmd
      * that this does not reflect if the data pointer of the packet is
      * valid or not.
      */
+    //检查这种特定的数据包类型是否携带负载数据。请注意，这并不反映数据包的数据指针是否有效。
     bool hasData() const        { return testCmdAttrib(HasData); }
     bool isLLSC() const         { return testCmdAttrib(IsLlsc); }
     bool isLockedRMW() const    { return testCmdAttrib(IsLockedRMW); }
     bool isSWPrefetch() const   { return testCmdAttrib(IsSWPrefetch); }
     bool isHWPrefetch() const   { return testCmdAttrib(IsHWPrefetch); }
     bool isPrefetch() const     { return testCmdAttrib(IsSWPrefetch) ||
-                                         testCmdAttrib(IsHWPrefetch); }
+                                        testCmdAttrib(IsHWPrefetch); }
     bool isError() const        { return testCmdAttrib(IsError); }
     bool isPrint() const        { return testCmdAttrib(IsPrint); }
     bool isFlush() const        { return testCmdAttrib(IsFlush); }
@@ -290,13 +291,15 @@ class MemCmd
  * ultimate destination and back, possibly being conveyed by several
  * different Packets along the way.)
  */
+/*数据包用于封装内存系统中两个对象之间的传输（例如，L1 和 L2 缓存）。
+（相比之下，一个单独的请求会从请求者一路传输到最终目的地，然后返回，过程中可能由多个不同的数据包进行传递。*/
 class Packet : public Printable
 {
-  public:
+    public:
     typedef uint32_t FlagsType;
     typedef gem5::Flags<FlagsType> Flags;
 
-  private:
+    private:
     enum : FlagsType
     {
         // Flags to transfer across when copying a packet
@@ -307,6 +310,7 @@ class Packet : public Printable
 
         // Does this packet have sharers (which means it should not be
         // considered writable) or not. See setHasSharers below.
+        /*这个数据包是否有共享者（这意味着它不应被视为可写）？请参见下面的 setHasSharers。*/
         HAS_SHARERS            = 0x00000001,
 
         // Special control flags
@@ -316,18 +320,22 @@ class Packet : public Printable
         /// Allow a responding cache to inform the cache hierarchy
         /// that it had a writable copy before responding. See
         /// setResponderHadWritable below.
+        /*允许响应缓存通知缓存层次结构，在响应之前它有一个可写的副本。请参见下面的 setResponderHadWritable。*/
         RESPONDER_HAD_WRITABLE = 0x00000004,
 
         // Snoop co-ordination flag to indicate that a cache is
         // responding to a snoop. See setCacheResponding below.
+        //嗅探协调标志，用于指示缓存正在响应一个嗅探。请参见下面的 setCacheResponding。
         CACHE_RESPONDING       = 0x00000008,
 
         // The writeback/writeclean should be propagated further
         // downstream by the receiver
+        //写回（writeback）/写干净（writeclean）操作应该由接收者进一步向下游传播。
         WRITE_THROUGH          = 0x00000010,
 
         // Response co-ordination flag for cache maintenance
         // operations
+        //缓存维护操作的响应协调标志
         SATISFIED              = 0x00000020,
 
         // hardware transactional memory
@@ -335,10 +343,12 @@ class Packet : public Printable
         // Indicates that this packet/request has returned from the
         // cache hierarchy in a failed transaction. The core is
         // notified like this.
+        /*表示这个数据包/请求在缓存层次结构中返回了一个失败的事务。核心会通过这种方式收到通知。*/
         FAILS_TRANSACTION      = 0x00000040,
 
         // Indicates that this packet/request originates in the CPU executing
         // in transactional mode, i.e. in a transaction.
+        //表示这个数据包/请求来源于正在执行事务模式的 CPU，即在一个事务中。
         FROM_TRANSACTION       = 0x00000080,
 
         /// Are the 'addr' and 'size' fields valid?
@@ -347,10 +357,12 @@ class Packet : public Printable
 
         /// Is the data pointer set to a value that shouldn't be freed
         /// when the packet is destroyed?
+        //数据指针是否被设置为在数据包被销毁时不应释放的值？
         STATIC_DATA            = 0x00001000,
         /// The data pointer points to a value that should be freed when
         /// the packet is destroyed. The pointer is assumed to be pointing
         /// to an array, and delete [] is consequently called
+        //数据指针指向的值应在数据包被销毁时释放。假定该指针指向一个数组，因此会调用 delete
         DYNAMIC_DATA           = 0x00002000,
 
         /// suppress the error if this packet encounters a functional
@@ -359,12 +371,13 @@ class Packet : public Printable
 
         // Signal block present to squash prefetch and cache evict packets
         // through express snoop flag
+        //通过快速嗅探标志发出信号，指示块存在，以压制预取和缓存驱逐数据包。
         BLOCK_CACHED          = 0x00010000
     };
 
     Flags flags;
 
-  public:
+    public:
     typedef MemCmd::Command Command;
 
     /// The command field of the packet.
@@ -377,13 +390,17 @@ class Packet : public Printable
 
     bool fill_prefetch;
 
-  private:
-   /**
+    private:
+    /**
     * A pointer to the data being transferred. It can be different
     * sizes at each level of the hierarchy so it belongs to the
     * packet, not request. This may or may not be populated when a
     * responder receives the packet. If not populated memory should
     * be allocated.
+    */
+    /*
+    指向正在传输的数据的指针。它在层次结构的每个级别可以有不同的大小，因此它属于数据包，而不是请求。
+    当响应者接收到数据包时，这个指针可能已被填充，也可能未被填充。如果未填充，则应分配内存。
     */
     PacketDataPtr data;
 
@@ -412,6 +429,10 @@ class Packet : public Printable
      * The default case will be NO_FAIL, otherwise this will specify the
      * reason for the transaction's failure in the memory subsystem.
      */
+    /*
+    保存事务的返回状态。
+    默认情况下为 NO_FAIL，否则将指定内存子系统中事务失败的原因。
+    */
     HtmCacheFailure htmReturnReason;
 
     /**
@@ -420,7 +441,7 @@ class Packet : public Printable
      */
     uint64_t htmTransactionUid;
 
-  public:
+    public:
 
     /**
      * The extra delay from seeing the packet until the header is
@@ -429,6 +450,9 @@ class Packet : public Printable
      * that actually makes the packet wait. As the delay is relative,
      * a 32-bit unsigned should be sufficient.
      */
+    /*
+    从看到数据包到头部被传输的额外延迟。这个延迟用于将交叉开关转发延迟传达给实际使数据包等待的邻近对象（例如，缓存）。
+    由于延迟是相对的，32 位无符号整数应该足够。*/
     uint32_t headerDelay;
 
     /**
@@ -437,6 +461,8 @@ class Packet : public Printable
      * by the coherent crossbar to account for the additional request
      * delay.
      */
+    /*
+    跟踪在向上嗅探后发送请求到内存系统下游所产生的额外延迟。这用于一致性交叉开关，以考虑额外的请求延迟。*/
     uint32_t snoopDelay;
 
     /**
@@ -447,6 +473,10 @@ class Packet : public Printable
      * crossbar does not make the packet wait. As the delay is
      * relative, a 32-bit unsigned should be sufficient.
      */
+    /*
+    从看到数据包到由提供数据的组件（如果有的话）传输完负载的额外流水线延迟。
+    这包括头部延迟。类似于头部延迟，这用于弥补交叉开关没有让数据包等待的事实。
+    由于延迟是相对的，32 位无符号整数应该足够。*/
     uint32_t payloadDelay;
 
     /**
@@ -466,6 +496,13 @@ class Packet : public Printable
      * populated with the current SenderState of a packet before
      * modifying the senderState field in the request packet.
      */
+    /*
+    一个虚拟基类的 opaque 结构，用于保存与数据包相关的状态（例如 MSHR），特定于看到数据包的 SimObject。
+    此状态的指针会在数据包的响应中返回，以便相关的 SimObject 可以快速查找处理数据包所需的状态。
+    一个具体的子类将从这个基类派生，以携带特定发送设备的状态。
+    由于多个 SimObject 可能会在内存系统中添加它们的 SenderState，SenderStates 会形成一个栈，
+    其中一个 SimObject 可以添加新的 SenderState，只要在响应返回时前一个 SenderState 被恢复。
+    因此，在修改请求数据包中的 senderState 字段之前，前一个 SenderState 应始终用当前的数据包 SenderState 填充。*/
     struct SenderState
     {
         SenderState* predecessor;
@@ -477,9 +514,10 @@ class Packet : public Printable
      * Object used to maintain state of a PrintReq.  The senderState
      * field of a PrintReq should always be of this type.
      */
+    //用于维护 PrintReq 状态的对象。PrintReq 的 senderState 字段应始终为此类型。
     class PrintReqState : public SenderState
     {
-      private:
+        private:
         /**
          * An entry in the label stack.
          */
@@ -496,7 +534,7 @@ class Packet : public Printable
 
         std::string *curPrefixPtr;
 
-      public:
+        public:
         std::ostream &os;
         const int verbosity;
 
@@ -513,8 +551,11 @@ class Packet : public Printable
          * prefix string onto the current prefix.  Labels will only be
          * printed if an object within the label's scope is printed.
          */
+        /*
+        将标签推送到标签栈中，并将给定的前缀字符串添加到当前前缀之前。
+        只有在标签范围内的对象被打印时，标签才会被打印。*/
         void pushLabel(const std::string &lbl,
-                       const std::string &prefix = "  ");
+                        const std::string &prefix = "  ");
 
         /**
          * Pop a label off the label stack.
@@ -526,6 +567,8 @@ class Packet : public Printable
          * stack. Called by printObj(), so normally not called by
          * users unless bypassing printObj().
          */
+        /*
+        打印标签栈中所有待打印的标签。由 printObj() 调用，因此通常不会由用户直接调用，除非绕过 printObj()。*/
         void printLabels();
 
         /**
@@ -543,6 +586,10 @@ class Packet : public Printable
      * that was attached to the original request (even if a new packet
      * is created).
      */
+    /*
+    这个数据包的发送者状态。设备应使用 dynamic_cast<> 将其转换为适合发送者的状态。
+    这个变量的目的是允许设备将额外的信息附加到请求上。
+    响应数据包必须返回附加到原始请求的发送者状态（即使创建了新的数据包）。*/
     SenderState *senderState;
 
     /**
@@ -553,6 +600,8 @@ class Packet : public Printable
      *
      * @param sender_state SenderState to push at the top of the stack
      */
+    /*
+    将新的发送者状态推送到数据包中，并将当前的发送者状态设置为新状态的前任。这应优于直接操作 senderState 成员变量。*/
     void pushSenderState(SenderState *sender_state);
 
     /**
@@ -563,6 +612,8 @@ class Packet : public Printable
      *
      * @return The current top of the stack
      */
+    /*
+    弹出状态栈的顶部并返回其指针。这假设当前的发送者状态不为 NULL。这应优于直接操作 senderState 成员变量。*/
     SenderState *popSenderState();
 
     /**
@@ -572,6 +623,8 @@ class Packet : public Printable
      *
      * @return The topmost state of type T
      */
+    /*
+    遍历发送者状态栈，并返回第一个类型为 T 的实例（通过 dynamic_cast 确定）。如果没有类型为 T 的发送者状态，则返回 NULL。*/
     template <typename T>
     T * findNextSenderState() const
     {
@@ -603,6 +656,9 @@ class Packet : public Printable
         // request has this flag, and for a response we should rather
         // look at the hasSharers flag (if not set, the response is to
         // be considered writable)
+        /*
+        我们不应该检查响应是否需要 writable，应该检查请求是否具有这个标志，
+        而对于响应，我们应该查看 hasSharers 标志（如果未设置，则应认为响应是可写的）。*/
         assert(isRequest());
         return cmd.needsWritable();
     }
@@ -647,9 +703,19 @@ class Packet : public Printable
      * hasSharers cacheResponding state
      * true       false           Shared
      * true       true            Shared
-     * false      false           Exclusive
+     * false      false           Exclusive独占
      * false      true            Modified
      */
+    /*
+    缓存用这个标志通知另一个缓存它们正在响应一个请求。
+    缓存仅在行处于 Modified 或 Owned 状态时才会响应嗅探。
+    请注意，在嗅探命中时，我们总是将行标记为 Modified，而不是 Owned。
+    在 Owned 行的情况下，我们会继续使所有其他副本失效。
+    */
+    /*
+    在缓存填充（见 Cache::handleFill）时，我们首先检查 hasSharers，如果 hasSharers 被设置，
+    则忽略 cacheResponding 标志。因此，一行会被分配为：
+    */
     void setCacheResponding()
     {
         assert(isRequest());
@@ -682,6 +748,12 @@ class Packet : public Printable
      * WritebackClean false      Exclusive
      * WritebackClean true       Shared
      */
+    /*
+    在填充操作中，缓存使用 hasSharers 标志与 cacheResponding 标志结合，如上所述。
+    如果 hasSharers 标志未设置，则数据包被视为可写。因此，来自内存的响应默认将行视为可写。
+    hasSharers 标志还被上游缓存用于通知下游缓存它们拥有该块（通过在命中的上游缓存标签或 MSHR 上调用 setHasSharers）。
+    如果嗅探数据包有共享者，则下游缓存会被阻止将脏行传递到上游，除非它明确请求了一个可写副本。见 Cache::satisfyCpuSideRequest。
+    hasSharers 标志也用于写回操作，与 WritebackClean 或 WritebackDirty 命令结合使用，以将块分配给下游，具体如下：*/
     void setHasSharers()    { flags.set(HAS_SHARERS); }
     bool hasSharers() const { return flags.isSet(HAS_SHARERS); }
     //@}
@@ -698,6 +770,11 @@ class Packet : public Printable
      * snoop packets that came from a downstream cache, rather than
      * snoop packets from neighbouring caches.
      */
+    /*
+    express snoop 标志有两个用途。首先，它用于绕过内存系统中正常（非嗅探）请求的流量控制。
+    在缓存响应另一个缓存的嗅探请求（它有一个脏行）的情况下，但该行不可写（并且可能有其他副本），
+    下游缓存会设置 express snoop 标志以在零时间内使所有其他副本无效。
+    其次，express snoop 标志也用于区分来自下游缓存的嗅探数据包，而不是来自邻近缓存的嗅探数据包。*/
     void setExpressSnoop()      { flags.set(EXPRESS_SNOOP); }
     bool isExpressSnoop() const { return flags.isSet(EXPRESS_SNOOP); }
 
@@ -710,6 +787,11 @@ class Packet : public Printable
      * cache helps in orchestrating the invalidation of these copies
      * by sending out the appropriate express snoops.
      */
+    /*
+    在响应嗅探请求时（这只发生在 Modified 或 Owned 行的情况下），
+    确保我们可以将 Owned 响应转换为 Modified 响应。如果未设置此标志，
+    则响应缓存中的行处于 Owned 状态，并且内存系统中可能还有其他 Shared 副本。
+    下游缓存通过发送适当的 express snoops 来帮助协调这些副本的无效化。*/
     void setResponderHadWritable()
     {
         assert(cacheResponding());
@@ -726,16 +808,20 @@ class Packet : public Printable
      *
      * @pkt The packet that we will copy flags from
      */
+    /*
+    将响应标志从输入数据包复制到当前数据包。响应标志确定是否找到了响应者以及块在目标处的状态。*/
     void copyResponderFlags(const PacketPtr pkt);
 
     /**
      * A writeback/writeclean cmd gets propagated further downstream
      * by the receiver when the flag is set.
      */
+    /*
+    当设置了该标志时，写回/写清命令会由接收者进一步传播到下游。*/
     void setWriteThrough()
     {
         assert(cmd.isWrite() &&
-               (cmd.isEviction() || cmd == MemCmd::WriteClean));
+                (cmd.isEviction() || cmd == MemCmd::WriteClean));
         flags.set(WRITE_THROUGH);
     }
     void clearWriteThrough() { flags.clear(WRITE_THROUGH); }
@@ -746,6 +832,8 @@ class Packet : public Printable
      * to respond. This is used by the crossbar to coordinate
      * responses for cache maintenance operations.
      */
+    /*
+    当请求在缓存中命中且缓存不打算响应时设置此标志。这由交叉开关用于协调缓存维护操作的响应。*/
     void setSatisfied()
     {
         assert(cmd.isClean());
@@ -812,6 +900,9 @@ class Packet : public Printable
      * an existing address, so it asserts that the current address is
      * valid.
      */
+    /*
+    在事务进行中更新此数据包的地址。这由地址映射器用于根据系统配置将已设置的地址更改为新地址。
+    它旨在重新映射现有地址，因此它断言当前地址是有效的。*/
     void setAddr(Addr _addr) { assert(flags.isSet(VALID_ADDR)); addr = _addr; }
 
     unsigned getSize() const  { assert(flags.isSet(VALID_SIZE)); return size; }
@@ -849,6 +940,8 @@ class Packet : public Printable
      * It has been determined that the SC packet should successfully update
      * memory. Therefore, convert this SC packet to a normal write.
      */
+    /*
+    已确定 SC 数据包应该成功更新内存。因此，将此 SC 数据包转换为正常的写操作。*/
     void
     convertScToWrite()
     {
@@ -874,15 +967,17 @@ class Packet : public Printable
      * first, but the Requests's physical address and size fields need
      * not be valid. The command must be supplied.
      */
+    /*
+    构造函数。请注意，必须首先构造一个 Request 对象，但 Request 的物理地址和大小字段不需要有效。必须提供命令。*/
     Packet(const RequestPtr &_req, MemCmd _cmd)
         :  cmd(_cmd), id((PacketId)_req.get()), req(_req),
-           fill_prefetch(false),
-           data(nullptr), addr(0), _isSecure(false), size(0),
-           _qosValue(0),
-           htmReturnReason(HtmCacheFailure::NO_FAIL),
-           htmTransactionUid(0),
-           headerDelay(0), snoopDelay(0),
-           payloadDelay(0), senderState(NULL)
+            fill_prefetch(false),
+            data(nullptr), addr(0), _isSecure(false), size(0),
+            _qosValue(0),
+            htmReturnReason(HtmCacheFailure::NO_FAIL),
+            htmTransactionUid(0),
+            headerDelay(0), snoopDelay(0),
+            payloadDelay(0), senderState(NULL)
     {
         flags.clear();
         if (req->hasPaddr()) {
@@ -901,6 +996,9 @@ class Packet : public Printable
          * cumbersome to add control flow in many places to check if the
          * packet represents a HTM command before calling getAddr().
          */
+        /*
+        从技术上讲，HTM 命令的地址设置为零，但无效。我们之所以假装它有效，是为了避免 getAddr() 函数失败。
+        在许多地方添加控制流以检查数据包是否表示 HTM 命令，然后再调用 getAddr()，会非常麻烦。*/
         if (req->isHTMCmd()) {
             flags.set(VALID_ADDR);
             assert(addr == 0x0);
@@ -916,15 +1014,17 @@ class Packet : public Printable
      * a request that is for a whole block, not the address from the
      * req.  this allows for overriding the size/addr of the req.
      */
+    /*
+    如果你尝试创建一个用于整个块的请求数据包，而不是使用 req 的地址，这个备用构造函数可以使用。它允许覆盖 req 的大小/地址。*/
     Packet(const RequestPtr &_req, MemCmd _cmd, int _blkSize, PacketId _id = 0)
         :  cmd(_cmd), id(_id ? _id : (PacketId)_req.get()), req(_req),
-           fill_prefetch(false),
-           data(nullptr), addr(0), _isSecure(false),
-           _qosValue(0),
-           htmReturnReason(HtmCacheFailure::NO_FAIL),
-           htmTransactionUid(0),
-           headerDelay(0),
-           snoopDelay(0), payloadDelay(0), senderState(NULL)
+            fill_prefetch(false),
+            data(nullptr), addr(0), _isSecure(false),
+            _qosValue(0),
+            htmReturnReason(HtmCacheFailure::NO_FAIL),
+            htmTransactionUid(0),
+            headerDelay(0),
+            snoopDelay(0), payloadDelay(0), senderState(NULL)
     {
         flags.clear();
         if (req->hasPaddr()) {
@@ -943,19 +1043,22 @@ class Packet : public Printable
      * less than that of the original packet.  In this case the new
      * packet should allocate its own data.
      */
+    /*
+    备用构造函数用于复制数据包。复制所有字段 除了 原始数据包的动态数据，不要复制这些数据，
+    因为我们无法保证新数据包的生命周期比原始数据包短。在这种情况下，新数据包应分配自己的数据。*/
     Packet(const PacketPtr pkt, bool clear_flags, bool alloc_data)
         :  cmd(pkt->cmd), id(pkt->id), req(pkt->req),
-           fill_prefetch(pkt->fill_prefetch),
-           data(nullptr),
-           addr(pkt->addr), _isSecure(pkt->_isSecure), size(pkt->size),
-           bytesValid(pkt->bytesValid),
-           _qosValue(pkt->qosValue()),
-           htmReturnReason(HtmCacheFailure::NO_FAIL),
-           htmTransactionUid(0),
-           headerDelay(pkt->headerDelay),
-           snoopDelay(0),
-           payloadDelay(pkt->payloadDelay),
-           senderState(pkt->senderState)
+            fill_prefetch(pkt->fill_prefetch),
+            data(nullptr),
+            addr(pkt->addr), _isSecure(pkt->_isSecure), size(pkt->size),
+            bytesValid(pkt->bytesValid),
+            _qosValue(pkt->qosValue()),
+            htmReturnReason(HtmCacheFailure::NO_FAIL),
+            htmTransactionUid(0),
+            headerDelay(pkt->headerDelay),
+            snoopDelay(0),
+            payloadDelay(pkt->payloadDelay),
+            senderState(pkt->senderState)
     {
         if (!clear_flags)
             flags.set(pkt->flags & COPY_FLAGS);
@@ -974,11 +1077,14 @@ class Packet : public Printable
         // should we allocate space for data, or not, the express
         // snoops do not need to carry any data as they only serve to
         // co-ordinate state changes
+        //我们是否应该为数据分配空间，或者不分配，express snoops 不需要携带任何数据，因为它们仅用于协调状态变化
         if (alloc_data) {
             // even if asked to allocate data, if the original packet
             // holds static data, then the sender will not be doing
             // any memcpy on receiving the response, thus we simply
             // carry the pointer forward
+            //即使要求分配数据空间，如果原始数据包包含静态数据，则在接收响应时，
+            //发送方不会进行任何 memcpy 操作，因此我们只需将指针传递下去
             if (pkt->flags.isSet(STATIC_DATA)) {
                 data = pkt->data;
                 flags.set(STATIC_DATA);
@@ -991,44 +1097,76 @@ class Packet : public Printable
     /**
      * Generate the appropriate read MemCmd based on the Request flags.
      */
+    /**
+     * 根据请求类型构建内存命令
+     * 
+     * @param req 请求对象的指针
+     * @return 返回与请求类型相应的内存命令
+     * 
+     * 此函数根据传入的请求对象指针，判断请求的类型，并返回相应的内存命令
+     * 如果请求是HTML命令、锁定加载请求、预取请求等，都会返回对应的内存命令
+     * 如果请求是锁定的原子操作请求，则返回对应的内存命令
+     * 如果请求是普通的读请求，则返回对应的内存命令
+     */
     static MemCmd
     makeReadCmd(const RequestPtr &req)
     {
+        // 判断请求是否为HTML命令
         if (req->isHTMCmd()) {
+            // 如果是HTML中止命令，则返回对应的内存命令
             if (req->isHTMAbort())
                 return MemCmd::HTMAbort;
             else
+                // 否则，返回HTML请求对应的内存命令
                 return MemCmd::HTMReq;
         } else if (req->isLLSC())
+            // 如果请求是锁定加载或存储比较交换命令，则返回对应的内存命令
             return MemCmd::LoadLockedReq;
         else if (req->isPrefetchEx())
+            // 如果请求是预取（独占）命令，则返回对应的内存命令
             return MemCmd::SoftPFExReq;
         else if (req->isPrefetch())
+            // 如果请求是预取命令，则返回对应的内存命令
             return MemCmd::SoftPFReq;
         else if (req->isLockedRMW())
+            // 如果请求是锁定的原子操作命令，则返回对应的内存命令
             return MemCmd::LockedRMWReadReq;
         else
+            // 默认情况下，返回普通读请求对应的内存命令
             return MemCmd::ReadReq;
     }
 
     /**
      * Generate the appropriate write MemCmd based on the Request flags.
      */
+    /**
+     * 根据请求类型生成相应的内存命令
+     * 
+     * @param req 请求对象的指针，用于判断其类型并生成对应的内存命令
+     * @return 返回生成的内存命令
+     */
     static MemCmd
     makeWriteCmd(const RequestPtr &req)
     {
+        // 判断请求是否为条件存储类型
         if (req->isLLSC())
             return MemCmd::StoreCondReq;
+        // 判断请求是否为交换或原子操作类型
         else if (req->isSwap() || req->isAtomic())
             return MemCmd::SwapReq;
+        // 判断请求是否为缓存失效类型
         else if (req->isCacheInvalidate()) {
-          return req->isCacheClean() ? MemCmd::CleanInvalidReq :
-              MemCmd::InvalidateReq;
+            // 根据缓存是否干净进一步确定命令类型
+            return req->isCacheClean() ? MemCmd::CleanInvalidReq :
+                MemCmd::InvalidateReq;
         } else if (req->isCacheClean()) {
+            // 如果请求表示缓存是干净的，则生成共享清洁请求
             return MemCmd::CleanSharedReq;
         } else if (req->isLockedRMW()) {
+            // 如果请求为带有锁的读写操作，则生成带有锁的RMW写请求
             return MemCmd::LockedRMWWriteReq;
         } else
+            // 默认情况下生成普通写请求
             return MemCmd::WriteReq;
     }
 
@@ -1084,14 +1222,19 @@ class Packet : public Printable
         makeResponse();
     }
 
-    void
-    setFunctionalResponseStatus(bool success)
+    /// 设置功能响应状态
+    /// 
+    /// 该函数用于根据操作的成功与否来设置当前命令的状态。如果操作失败，会根据是读操作还是写操作设置不同的错误命令。
+    /// 
+    /// @param success 操作是否成功的标志，true表示成功，false表示失败。
+    void setFunctionalResponseStatus(bool success)
     {
+        // 当操作失败时，根据当前是否为写操作来决定设置的错误命令
         if (!success) {
             if (isWrite()) {
-                cmd = MemCmd::FunctionalWriteError;
+                cmd = MemCmd::FunctionalWriteError; // 如果是写操作失败，则设置为功能写错误
             } else {
-                cmd = MemCmd::FunctionalReadError;
+                cmd = MemCmd::FunctionalReadError; // 如果是读操作失败，则设置为功能读错误
             }
         }
     }
@@ -1108,6 +1251,7 @@ class Packet : public Printable
     /**
      * Check if packet corresponds to a given block-aligned address and
      * address space.
+     * 检查数据包是否对应于给定的块对齐地址和地址空间
      *
      * @param addr The address to compare against.
      * @param is_secure Whether addr belongs to the secure address space.
@@ -1120,6 +1264,7 @@ class Packet : public Printable
     /**
      * Check if this packet refers to the same block-aligned address and
      * address space as another packet.
+     * 检查此数据包是否与另一个数据包引用相同的块对齐地址和地址空间。
      *
      * @param pkt The packet to compare against.
      * @param blk_size Block size in bytes.
@@ -1145,7 +1290,7 @@ class Packet : public Printable
      */
     bool matchAddr(const PacketPtr pkt) const;
 
-  public:
+    public:
     /**
      * @{
      * @name Data accessor mehtods
@@ -1162,6 +1307,10 @@ class Packet : public Printable
      * copied once into the location originally set. On the way back
      * to the source, no copies are necessary.
      */
+    /*
+    将数据指针设置为不应释放的以下值。静态数据允许我们进行一次 memcpy 操作，即使需要多个数据包才能从源到目的地再返回。
+    实质上，该指针是通过在原始数据包上调用 dataStatic 设置的，并且每当此数据包被复制和转发时，都会传递相同的指针。
+    当数据包最终到达持有数据的目的地时，它会被复制一次到最初设置的位置。在返回源的过程中，不需要进行任何复制。*/
     template <typename T>
     void
     dataStatic(T *p)

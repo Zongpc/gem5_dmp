@@ -42,21 +42,39 @@ GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
 namespace prefetch
 {
 
+// Tagged构造函数
+// 参数:
+//   p - 一个TaggedPrefetcherParams类型的引用，用于初始化参数
+// 
+// 说明:
+//   - 使用Queued类的构造函数和degree成员变量初始化本类
+//   - degree根据传入的参数p中的degree成员进行初始化
 Tagged::Tagged(const TaggedPrefetcherParams &p)
     : Queued(p), degree(p.degree)
 {
 
 }
 
-void
-Tagged::calculatePrefetch(const PrefetchInfo &pfi,
-    std::vector<AddrPriority> &addresses)
+/**
+ * 根据给定的预取信息计算并添加预取地址
+ *
+ * 本函数基于给定的预取信息（PFI），计算出一系列预取地址，并将它们添加到地址列表中
+ * 预取地址通过块地址加上一个基于预取程度（degree）和块大小（blkSize）的偏移量来计算
+ *
+ * @param pfi 预取信息对象，包含需要预取数据的相关信息
+ * @param addresses 一个地址和优先级的列表，用于存储计算出的预取地址
+ */
+void Tagged::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addresses)
 {
+    // 计算块地址，即预取信息指定地址对应的缓存块地址
     Addr blkAddr = blockAddress(pfi.getAddr());
 
+    // 循环遍历预取程度范围内的每个偏移量
     for (int d = 1; d <= degree; d++) {
-        Addr newAddr = blkAddr + d*(blkSize);
-        addresses.push_back(AddrPriority(newAddr,0));
+        // 计算新的预取地址
+        Addr newAddr = blkAddr + d * blkSize;
+        // 将新的预取地址及其优先级（0表示最低优先级）添加到地址列表中
+        addresses.push_back(AddrPriority(newAddr, 0));
     }
 }
 

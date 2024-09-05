@@ -1,0 +1,18 @@
+#!/bin/sh
+set -ex
+mount -t proc - /proc
+mount -t sysfs - /sys
+mount -t debugfs - /sys/kernel/debug/
+for DEV in /dev/sdb1 /dev/sdb /dev/vdb1 /dev/vdb /dev/vda1 /dev/vda; do
+  if [ -e "${DEV}" ]; then
+    mount "${DEV}" /data
+    break
+  fi
+done
+f=/tmp/script
+/sbin/m5 --addr 0x10010000 readfile > "$f"
+if [ -s "$f" ]; then
+  chmod +rx "$f"
+  "$f" || true
+fi
+exec /sbin/getty -a root -L ttyAMA0 vt102

@@ -79,7 +79,7 @@ MSHR::TargetList::TargetList(const std::string &name)
 
 void
 MSHR::TargetList::updateFlags(PacketPtr pkt, Target::Source source,
-                              bool alloc_on_fill)
+                            bool alloc_on_fill)
 {
     if (source != Target::FromSnoop) {
         if (pkt->needsWritable()) {
@@ -553,13 +553,17 @@ MSHR::extractServiceableTargets(PacketPtr pkt)
     // non-FromCPU target. This way the remaining FromCPU targets
     // issue a new request and get a fresh copy of the block and we
     // avoid memory consistency violations.
+    // 如果下游的 MSHR（内存系统请求记录）接收到一个无效请求（invalidation request），则我们仅
+    // 服务第一个来自 FromCPU 的目标以及任何其他非 FromCPU 的目标。这样做的目的是让剩下的 FromCPU 目标
+    // 发起一个新的请求并获得该内存块的最新副本，从而避免了内存一致性违规的情况。
     if (pkt->cmd == MemCmd::ReadRespWithInvalidate) {
         auto it = targets.begin();
         assert((it->source == Target::FromCPU) ||
-               (it->source == Target::FromPrefetcher));
+                (it->source == Target::FromPrefetcher));
         ready_targets.push_back(*it);
         // Leave the Locked RMW Read until the corresponding Locked Write
         // request comes in
+        // 保留锁定的 RMW（Read-Modify-Write，读取-修改-写入）读操作，直到对应的锁定写请求到来。
         if (it->pkt->cmd != MemCmd::LockedRMWReadReq) {
             it = targets.erase(it);
             while (it != targets.end()) {
@@ -581,6 +585,8 @@ MSHR::extractServiceableTargets(PacketPtr pkt)
                 // Leave the Locked RMW Read until the corresponding Locked
                 // Write comes in. Also don't service any later targets as the
                 // line is now "locked".
+                // 在处理锁定的读取-修改-写（RMW，Read-Modify-Write）操作时，应该保留读取操作的状态，直到对应的锁定写请求到达。
+                // 同时，在这条数据线被“锁定”之后，不要服务后续的目标请求。
                 break;
             }
             it = targets.erase(it);

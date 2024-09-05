@@ -359,7 +359,7 @@ def addCommonOptions(parser):
     )
     parser.add_argument(
         "--stride-degree",
-        default=4,
+        default=1,
         action="store",
         type=int,
         help="Number of Stride prefetches to generate",
@@ -387,7 +387,7 @@ def addCommonOptions(parser):
     )
     parser.add_argument(
         "--dmp-indir-range",
-        default=16,
+        default=4,
         action="store",
         type=int,
         help="Size of indirect prefetch range, limited by Cache blkSize",
@@ -415,7 +415,7 @@ def addCommonOptions(parser):
     )
     parser.add_argument(
         "--tlb-size",
-        default=64,
+        default=65536,
         action="store",
         type=int,
         help="Size of first stage ArmTLB"

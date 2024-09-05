@@ -169,10 +169,10 @@ NoncoherentCache::createMissPacket(PacketPtr cpu_pkt, CacheBlk *blk,
 
 Cycles
 NoncoherentCache::handleAtomicReqMiss(PacketPtr pkt, CacheBlk *&blk,
-                                      PacketList &writebacks)
+                                    PacketList &writebacks)
 {
     PacketPtr bus_pkt = createMissPacket(pkt, blk, true,
-                                         pkt->isWholeLineWrite(blkSize));
+                                        pkt->isWholeLineWrite(blkSize));
     DPRINTF(Cache, "Sending an atomic %s\n", bus_pkt->print());
 
     Cycles latency = ticksToCycles(memSidePort.sendAtomic(bus_pkt));
@@ -181,17 +181,19 @@ NoncoherentCache::handleAtomicReqMiss(PacketPtr pkt, CacheBlk *&blk,
     // At the moment the only supported downstream requests we issue
     // are ReadReq and therefore here we should only see the
     // corresponding responses
+    // 目前，我们发出的唯一受支持的下游请求是 ReadReq，因此在这里我们应该只看到相应的响应
     assert(bus_pkt->isRead());
     assert(pkt->cmd != MemCmd::UpgradeResp);
     assert(!bus_pkt->isInvalidate());
     assert(!bus_pkt->hasSharers());
-
+    // 我们现在正在处理响应处理
     // We are now dealing with the response handling
     DPRINTF(Cache, "Receive response: %s\n", bus_pkt->print());
 
     if (!bus_pkt->isError()) {
         // Any reponse that does not have an error should be filling,
         // afterall it is a read response
+        // 任何没有错误的响应都应该是填充操作，毕竟它是一个读取响应
         DPRINTF(Cache, "Block for addr %#llx being updated in Cache\n",
                 bus_pkt->getAddr());
         blk = handleFill(bus_pkt, blk, writebacks, allocOnFill(bus_pkt->cmd));
@@ -203,6 +205,7 @@ NoncoherentCache::handleAtomicReqMiss(PacketPtr pkt, CacheBlk *&blk,
 
     // Use the separate bus_pkt to generate response to pkt and
     // then delete it.
+    // 使用单独的 bus_pkt 生成对 pkt 的响应，然后删除它。
     if (!pkt->isWriteback() && pkt->cmd != MemCmd::WriteClean) {
         assert(pkt->needsResponse());
         pkt->makeAtomicResponse();
@@ -253,7 +256,7 @@ NoncoherentCache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt,
         Packet *tgt_pkt = target.pkt;
 
         switch (target.source) {
-          case MSHR::Target::FromCPU:
+            case MSHR::Target::FromCPU:
             // handle deferred requests comming from a cache or core
             // above
 
@@ -292,7 +295,7 @@ NoncoherentCache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt,
             cpuSidePort.schedTimingResp(tgt_pkt, completion_time);
             break;
 
-          case MSHR::Target::FromPrefetcher:
+            case MSHR::Target::FromPrefetcher:
             // handle deferred requests comming from a prefetcher
             // attached to this cache
             assert(tgt_pkt->cmd == MemCmd::HardPFReq);
@@ -304,7 +307,7 @@ NoncoherentCache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt,
             delete tgt_pkt;
             break;
 
-          default:
+            default:
             // we should never see FromSnoop Targets as this is a
             // non-coherent cache
             panic("Illegal target->source enum %d\n", target.source);

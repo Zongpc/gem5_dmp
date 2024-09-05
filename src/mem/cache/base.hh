@@ -94,7 +94,7 @@ struct BaseCacheParams;
  */
 class BaseCache : public ClockedObject
 {
-  protected:
+    protected:
     /**
      * Indexes to enumerate the MSHR queues.
      */
@@ -104,7 +104,7 @@ class BaseCache : public ClockedObject
         MSHRQueue_WriteBuffer
     };
 
-  public:
+    public:
     /**
      * Reasons for caches to be blocked.
      */

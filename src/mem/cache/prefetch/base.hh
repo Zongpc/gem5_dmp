@@ -73,15 +73,15 @@ class Base : public ClockedObject
 {
     class PrefetchListener : public ProbeListenerArgBase<PacketPtr>
     {
-      public:
+        public:
         PrefetchListener(Base &_parent, ProbeManager *pm,
-                         const std::string &name, bool _isFill = false, bool _miss = false,
-                         bool l1_req=false, bool l1_resp=false) 
+                        const std::string &name, bool _isFill = false, bool _miss = false,
+                        bool l1_req=false, bool l1_resp=false) 
             : ProbeListenerArgBase(pm, name),
-              parent(_parent), isFill(_isFill), miss(_miss),
-              l1_req(l1_req), l1_resp(l1_resp) {}
+            parent(_parent), isFill(_isFill), miss(_miss),
+            l1_req(l1_req), l1_resp(l1_resp) {}
         void notify(const PacketPtr &pkt) override;
-      protected:
+        protected:
         Base &parent;
         const bool isFill;
         const bool miss;
@@ -92,7 +92,7 @@ class Base : public ClockedObject
 
     std::vector<PrefetchListener *> listeners;
 
-  public:
+    public:
 
     /**
      * Class containing the information needed by the prefetch to train and
@@ -124,8 +124,9 @@ class Base : public ClockedObject
         uint8_t *data;
         /** Whether this prefech fill generates new prefetch */
         bool fill_trigger;
-
-      public:
+        /** Whether this event is a pointer */
+        bool is_pointer;
+        public:
         /**
          * Obtains the address value of this Prefetcher address.
          * @return the addres value.
@@ -230,6 +231,10 @@ class Base : public ClockedObject
             return fill_trigger;
         }
 
+        bool isPointer() const
+        {
+            return is_pointer;
+        }
         /**
          * Gets the associated data of the request triggering the event
          * @param Byte ordering of the stored data
@@ -287,6 +292,8 @@ class Base : public ClockedObject
          * by cache refill
          */
         PrefetchInfo(Addr addr, Addr pc, RequestorID requestorID, ContextID cID);
+
+        PrefetchInfo(Addr addr, Addr pc, RequestorID requestorID, ContextID cID, bool is_pointer_in);
 
         ~PrefetchInfo()
         {
@@ -460,16 +467,16 @@ class Base : public ClockedObject
     
     virtual void hitTrigger(Addr pc, Addr addr, const uint8_t* data_ptr, bool from_access) {};
 
-    virtual void dmdCatchPfHook(Addr pc) {};
+    virtual void dmdCatchPfHook(Addr pc) {};// 可以注释取消对于前瞻度的auto调整
 
-    virtual void pfReplaceHook(Addr pc) {};
+    virtual void pfReplaceHook(Addr pc) {};//可以注释取消对于前瞻度的auto调整
 
     void prefetchHit(PacketPtr pkt, bool miss);
 
     void
     prefetchUnused(Addr pc)
     {
-        pfReplaceHook(pc);
+        // pfReplaceHook(pc);
 
         prefetchStats.pfUnused++;
 
@@ -485,7 +492,7 @@ class Base : public ClockedObject
 
     void incrDemandMshrHitsAtPf(Addr pc)
     {
-        dmdCatchPfHook(pc);
+        // dmdCatchPfHook(pc);
 
         prefetchStats.demandMshrHitsAtPf++;
 

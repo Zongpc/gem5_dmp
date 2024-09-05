@@ -49,7 +49,8 @@ from common.Caches import *
 from common import ObjectList
 
 monitor_pc_list = [
-   0x400c70, 0x400c7c, 0x400c80, 0x400ca0, 0x400ca4, 0x400cc0, 0x400ccc, 0x400cdc
+    # 0x401050, 0x401088, 0x401058, 0x401064, 0x40107c
+    0x401010, 0x401048, 0x401018, 0x401024, 0x40103c
 ]
 # monitor_pc_list = [
 #     0x400598, 0x4005b0, 0x4005bc
@@ -224,14 +225,14 @@ def config_cache(options, system):
             #system.cpu[i].dcache.replacement_policy.pf_gap = getattr(options, "lru_pf_gap", 0) * 400
 
             if options.l1d_hwp_type == "StridePrefetcher":
-                system.cpu[i].dcache.prefetcher.degree = getattr(options, "stride_degree", 4)
+                system.cpu[i].dcache.prefetcher.degree = getattr(options, "stride_degree", 1)
 
             if options.l1d_hwp_type == "DiffMatchingPrefetcher":
                 system.cpu[i].dcache.prefetcher.set_probe_obj(
                     system.cpu[i].dcache, system.cpu[i].dcache, system.cpu[i].dcache
                 )
 
-                system.cpu[i].dcache.prefetcher.degree = getattr(options, "stride_degree", 4)
+                system.cpu[i].dcache.prefetcher.degree = getattr(options, "stride_degree", 1)
                 system.cpu[i].dcache.prefetcher.stream_ahead_dist = getattr(options, "dmp_stream_ahead_dist", 64)
                 system.cpu[i].dcache.prefetcher.range_ahead_dist_level_1 = getattr(options, "dmp_range_ahead_dist_level_1", 0)
                 system.cpu[i].dcache.prefetcher.range_ahead_dist_level_2 = getattr(options, "dmp_range_ahead_dist_level_2", 0)
@@ -260,7 +261,7 @@ def config_cache(options, system):
                 system.cpu[i].dcache.prefetcher.use_virtual_addresses = True
                 system.cpu[i].dcache.prefetcher.tag_vaddr = True
                 system.cpu[i].dcache.prefetcher.stats_pc_list = monitor_pc_list 
-                #system.cpu[i].dcache.prefetcher.latency = 3
+                system.cpu[i].dcache.prefetcher.latency = 0#xymc
                 # system.cpu[i].dcache.prefetcher.latency = 5
                 if system.cpu[i].mmu.dtb:
                     print("Adding DTLB to DCache prefetcher.")
@@ -292,8 +293,8 @@ def config_cache(options, system):
                 )
 
         if options.tlb_size:
-            system.cpu[i].mmu.dtb.size = getattr(options, "tlb_size", 64)
-            system.cpu[i].mmu.stage2_dtb.size = getattr(options, "tlb_size", 64) // 2
+            system.cpu[i].mmu.dtb.size = getattr(options, "tlb_size", 65536)
+            system.cpu[i].mmu.stage2_dtb.size = getattr(options, "tlb_size", 65536) // 2
 
         system.cpu[i].mmu.dtb.can_serialize = True
 
@@ -304,10 +305,10 @@ def config_cache(options, system):
         if options.l2cache:
             assert(i==0) # only support single core 
             if options.l2_hwp_type == "StridePrefetcher":
-                system.l2.prefetcher.degree = getattr(options, "stride_degree", 4)
+                system.l2.prefetcher.degree = getattr(options, "stride_degree", 1)
 
             if options.l2_hwp_type == "IrregularStreamBufferPrefetcher":
-                system.l2.prefetcher.degree = getattr(options, "stride_degree", 4)
+                system.l2.prefetcher.degree = getattr(options, "stride_degree", 1)
 
             if options.l2_hwp_type == "DiffMatchingPrefetcher":
 
@@ -322,13 +323,13 @@ def config_cache(options, system):
                     print("Add L1 StridePrefetcher as L2 DMP helper.")
                     system.l2.prefetcher.set_pf_helper(system.cpu[i].dcache.prefetcher)
                 else:
-                    system.l2.prefetcher.degree = getattr(options, "stride_degree", 4)
+                    system.l2.prefetcher.degree = getattr(options, "stride_degree", 1)
 
                 system.l2.prefetcher.stream_ahead_dist = getattr(options, "dmp_stream_ahead_dist", 64)
-                system.l2.prefetcher.range_ahead_dist = getattr(options, "dmp_range_ahead_dist", 0)
+                # system.l2.prefetcher.range_ahead_dist = getattr(options, "dmp_range_ahead_dist", 0)
                 system.l2.prefetcher.indir_range = getattr(options, "dmp_indir_range", 4)
 
-                system.l2.prefetcher.auto_detect = False
+                system.l2.prefetcher.auto_detect = True
 
                 system.l2.prefetcher.queue_size = 1024*16
                 system.l2.prefetcher.max_prefetch_requests_with_pending_translation = 1024
@@ -452,8 +453,8 @@ def config_three_level_cache(options, system):
             )
             
         if options.tlb_size:
-            system.cpu[i].mmu.dtb.size = getattr(options, "tlb_size", 64)
-            system.cpu[i].mmu.stage2_dtb.size = getattr(options, "tlb_size", 64) // 2
+            system.cpu[i].mmu.dtb.size = getattr(options, "tlb_size", 65536)
+            system.cpu[i].mmu.stage2_dtb.size = getattr(options, "tlb_size", 65536) // 2
 
         system.cpu[i].mmu.dtb.can_serialize = True
 
@@ -468,14 +469,14 @@ def config_three_level_cache(options, system):
             )
 
             if options.l2_hwp_type == "StridePrefetcher":
-                system.cpu[i].l2.prefetcher.degree = getattr(options, "stride_degree", 4)
+                system.cpu[i].l2.prefetcher.degree = getattr(options, "stride_degree", 1)
 
             if options.l2_hwp_type == "IrregularStreamBufferPrefetcher":
-                system.cpu[i].l2.prefetcher.degree = getattr(options, "stride_degree", 4)
+                system.cpu[i].l2.prefetcher.degree = getattr(options, "stride_degree", 1)
 
             if options.l2_hwp_type == "DiffMatchingPrefetcher":
                 system.cpu[i].l2.prefetcher.set_probe_obj(system.cpu[i].dcache, system.cpu[i].l2)
-                system.cpu[i].l2.prefetcher.degree = getattr(options, "stride_degree", 4)
+                system.cpu[i].l2.prefetcher.degree = getattr(options, "stride_degree", 1)
 
                 system.cpu[i].l2.prefetcher.stream_ahead_dist = getattr(options, "dmp_stream_ahead_dist", 64)
                 system.cpu[i].l2.prefetcher.indir_range = getattr(options, "dmp_indir_range", 4)

@@ -160,7 +160,7 @@ class SBOOE : public Queued
         SBOOE(const SBOOEPrefetcherParams &p);
 
         void calculatePrefetch(const PrefetchInfo &pfi,
-                               std::vector<AddrPriority> &addresses) override;
+                                std::vector<AddrPriority> &addresses) override;
 };
 
 } // namespace prefetch

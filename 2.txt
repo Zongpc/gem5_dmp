@@ -1,0 +1,5 @@
+687166433200: system.cpu.dcache.prefetcher: Insert RelationTable: indexPC 401050 targetPC 401088 target_addr 7fb84b2058 shift 5 cID 0 rangeType 1 priority 2147483392
+687168181600: system.cpu.dcache.prefetcher: Insert RelationTable: indexPC 401088 targetPC 401058 target_addr 4 shift 0 cID 0 rangeType 0 priority 2147483393
+687168182000: system.cpu.dcache.prefetcher: Insert RelationTable: indexPC 401088 targetPC 401064 target_addr 8 shift 0 cID 0 rangeType 0 priority 2147483393
+687168182800: system.cpu.dcache.prefetcher: Insert RelationTable: indexPC 401088 targetPC 401088 target_addr 18 shift 0 cID 0 rangeType 0 priority 2147483393
+687168245200: system.cpu.dcache.prefetcher: Insert RelationTable: indexPC 401088 targetPC 40107c target_addr 10 shift 0 cID 0 rangeType 0 priority 2147483393

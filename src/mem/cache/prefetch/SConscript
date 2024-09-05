@@ -57,3 +57,4 @@ Source('tagged.cc')
 Source('diff_matching.cc')
 
 DebugFlag('DMP')
+DebugFlag('POINTER')

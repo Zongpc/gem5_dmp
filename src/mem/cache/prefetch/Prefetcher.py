@@ -708,10 +708,10 @@ class DiffMatchingPrefetcher(StridePrefetcher):
                 
     iq_ent_num = Param.Unsigned(16, "Number of entres of iq")
 
-    iddt_ent_num = Param.Unsigned(8, "Number of entries of iddt")
-    ics_ent_num = Param.Unsigned(8, "Number of entries of ics")
+    iddt_ent_num = Param.Unsigned(16, "Number of entries of iddt")
+    ics_ent_num = Param.Unsigned(16, "Number of entries of ics")
 
-    tadt_ent_num = Param.Unsigned(16, "Number of entries of tadt")
+    tadt_ent_num = Param.Unsigned(64, "Number of entries of tadt")
     rg_ent_num = Param.Unsigned(16, "Number of entries of RangeTable") 
 
     rt_ent_num = Param.Unsigned(16, "Number of entries of rt")
@@ -722,8 +722,8 @@ class DiffMatchingPrefetcher(StridePrefetcher):
     iddt_diff_num = Param.Unsigned(12, "Number of difference entries of iddt")
     tadt_diff_num = Param.Unsigned(10, "Number of difference entries of tadt")
 
-    ics_miss_threshold = Param.Unsigned(6, "Number of candidate pc miss threshold")
-    ics_candidate_num = Param.Unsigned(3, "Number of candidate target in ics")
+    ics_miss_threshold = Param.Unsigned(3, "Number of candidate pc miss threshold")
+    ics_candidate_num = Param.Unsigned(5, "Number of candidate target in ics")
     range_group_size = Param.Unsigned(256, "Number of relations in each range group")
 
     stream_ahead_dist = Param.Unsigned(
@@ -736,7 +736,7 @@ class DiffMatchingPrefetcher(StridePrefetcher):
         0, "Number of prefetchs ahead when a range target being identified"
     )
     indir_range = Param.Unsigned(
-        16, "Size of indirect prefetch range, limited by Cache blkSize" 
+        2, "Size of indirect prefetch range, limited by Cache blkSize" 
     )
     replace_threshold_level_2 = Param.Unsigned(
         256, "Level 2 range ahead dist reset threshold"
@@ -749,7 +749,7 @@ class DiffMatchingPrefetcher(StridePrefetcher):
     )
 
     range_level = Param.Unsigned(
-        4, "Number of total range quantification levels"
+        6, "Number of total range quantification levels"
     )
 
     index_pc_init = VectorParam.Addr([], "IDDT array init from config")
