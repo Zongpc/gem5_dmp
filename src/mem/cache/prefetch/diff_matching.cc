@@ -723,6 +723,7 @@ DiffMatching::insertRT(
 
     /* get indexPC Range type */
     bool new_range_type;
+    bool old_range_flag = false;
 
     // Stride PC should be classified as Range
     // search for all requestor
@@ -747,6 +748,23 @@ DiffMatching::insertRT(
             if (new_range_type == true) break; 
         } 
 
+    }
+
+    /*first stream should be rangetype as default*/
+    for (auto& rt_ent : relationTable) {
+        if (rt_ent.valid && rt_ent.target_pc == new_index_pc) {
+            old_range_flag = true;
+        }
+    }
+
+    if (!old_range_flag) {
+        new_range_type = true;
+        DPRINTF(DMP, "Insert RelationTable Rangetype Check: "
+            "indexPC %llx is inserted to RT at the first time, the rangeType: %d \n",
+            new_index_pc, new_range_type
+        );
+    } else {
+        new_range_type = false;
     }
 
     /* get priority */
@@ -1499,8 +1517,8 @@ void DiffMatching::notify (const PacketPtr &pkt, const PrefetchInfo &pfi)
                 // int ahead_i=1;
                 // 预取循环
                 // DPRINTF(DMP, "pc %llx qianzhan %d range_level : %d rangecount %d\n", pc, i, range_level,range_count);
-                i=32;
-                d=8;
+                i=32; //look forward 32:4
+                d=8;  //look forward range +8:one more list
                 for (int ahead =i; ahead <= i+d; ahead += 8) {
                     // 尝试获取缓存块
                     CacheBlk* try_cache_blk = cache->getCacheBlk(pkt->getAddr()+ahead, pkt->isSecure());

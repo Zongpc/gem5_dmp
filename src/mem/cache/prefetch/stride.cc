@@ -159,6 +159,7 @@ Stride::checkStride(Addr addr) const
 
         // 如果找到条目且其信心值达到或超过阈值，则认为地址符合 stride 模式
         if (entry && entry->confidence.calcSaturation() >= threshConf) {
+            DPRINTF(HWPrefetch, "Stride Chcek Pass: PC %x, confidence %.3f.\n", addr,entry->confidence.calcSaturation());
             return true;
         }
     }

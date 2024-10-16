@@ -1,0 +1,8 @@
+#!/bin/sh
+
+echo "graph Computing Now!"
+md5sum ./graph
+./graph_aarch64_bfs_nap ./dataset/sx-superuser_shuf.txt 580000
+echo "graph Done."
+
+/sbin/m5 exit

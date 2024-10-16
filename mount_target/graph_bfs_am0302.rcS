@@ -1,0 +1,8 @@
+#!/bin/sh
+
+echo "graph Computing Now!"
+md5sum ./graph_aarch64_bfs_ptr
+./graph_aarch64_bfs_ptr ./dataset/amazon0302.edge 262120 1
+echo "graph Done."
+
+/sbin/m5 exit

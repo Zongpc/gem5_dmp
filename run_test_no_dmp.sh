@@ -13,7 +13,7 @@ for r in "${r_values[@]}"; do
         first_command="build/ARM/gem5.opt --debug-flags=DMP \
         configs/dmp_pf/fs_L2.py --num-cpus 1 --cpu-clock 2.5GHz --cpu-type O3_ARM_v7a_3 \
         --caches --l2cache --l1i_assoc 8 --l1d_assoc 8 --l2_assoc 4 --l2_mshr_num 32 \
-        --l2_repl_policy LRURP ${dmp_flag} --dmp-notify l1 \
+        --l2_repl_policy LRURP --dmp-notify l1 \
         --mem-type SimpleMemory --mem-size 8GB --kernel=/home/zongpc/work/qiang/os/binaries/vmlinux.arm64 \
         --bootloader=/home/zongpc/work/qiang/os/binaries/boot.arm64 --disk-image=/home/zongpc/work/qiang/os/ubuntu-18.04-arm64-docker.img \
         --script=/home/zongpc/work/qiang/gem5_study/mount_target/${r}.rcS --checkpoint-dir=/home/zongpc/work/qiang/gem5_study/m5out/${r} \
@@ -25,7 +25,7 @@ for r in "${r_values[@]}"; do
 
     # 执行第一个指令
     echo "执行指令: $first_command"
-    eval $first_command  > tmplog_${r}.txt
+    eval $first_command  > tmplog_${r}_no_dmp.txt
 
     # 获取前300,000行和后100,000行，并将其写入 1.txt
     # {
@@ -41,8 +41,8 @@ for r in "${r_values[@]}"; do
     fi
 
     # 移动并重命名 stats.txt 文件
-    mv "m5out/stats.txt" "m5out/${r}/stats_${r}.txt"
-    mv "m5out/system.terminal" "m5out/${r}/${r}.terminal"
+    mv "m5out/stats.txt" "m5out/${r}/stats_${r}_no_dmp.txt"
+    mv "m5out/system.terminal" "m5out/${r}/${r}_no_dmp.terminal"
 
 done
 

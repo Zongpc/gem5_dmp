@@ -1,0 +1,8 @@
+#!/bin/sh
+
+echo "graph Computing Now!"
+md5sum ./graph_aarch64_prim_ws
+./graph_aarch64_prim_ws ./dataset/web-Stanford.edge 281910 1
+echo "graph Done."
+
+/sbin/m5 exit
