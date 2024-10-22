@@ -809,3 +809,50 @@ class DiffMatchingPrefetcher(StridePrefetcher):
         else:
             print("No valid Monitor SimObj !")
         self.getCCObject().regProbeListeners()
+
+class MultiPrefetcher_Stride_IMP(MultiPrefetcher):
+    prefetchers = VectorParam.BasePrefetcher([StridePrefetcher(),IndirectMemoryPrefetcher()], "Array of prefetchers")
+
+class MultiPrefetcher_IMP_Stride(MultiPrefetcher):
+    prefetchers = VectorParam.BasePrefetcher([IndirectMemoryPrefetcher(),StridePrefetcher()], "Array of prefetchers")
+
+class BertiPrefetcherHashedSetAssociative(SetAssociative):
+    type = 'BertiPrefetcherHashedSetAssociative'
+    cxx_class = 'gem5::prefetch::BertiPrefetcherHashedSetAssociative'
+    cxx_header = "mem/cache/prefetch/berti.hh"
+
+class BertiPrefetcher(QueuedPrefetcher):
+    type = 'BertiPrefetcher'
+    cxx_class = 'gem5::prefetch::Berti'
+    cxx_header = "mem/cache/prefetch/berti.hh"
+
+    # Do not consult stride prefetcher on instruction accesses
+    on_inst = False
+    prefetch_on_access = True
+
+    use_requestor_id = Param.Bool(True, "Use requestor id based history")
+
+    degree = Param.Int(8, "Number of prefetches to generate")
+
+    history_table_assoc = Param.Int(32, "Associativity of the PC table")
+    history_table_entries = Param.MemorySize("32", "Number of entries of the PC table")
+    history_table_indexing_policy = Param.BaseIndexingPolicy(
+        BertiPrefetcherHashedSetAssociative(entry_size = 1,
+        assoc = Parent.history_table_assoc, size = Parent.history_table_entries),
+        "Indexing policy of the PC table")
+    history_table_replacement_policy = Param.BaseReplacementPolicy(LRURP(),
+        "Replacement policy of the PC table")
+    
+    delta_table_assoc = Param.Int(32, "Associativity of the PC table")
+    delta_table_entries = Param.MemorySize("32", "Number of entries of the PC table")
+    delta_table_indexing_policy = Param.BaseIndexingPolicy(
+        BertiPrefetcherHashedSetAssociative(entry_size = 1,
+        assoc = Parent.delta_table_assoc, size = Parent.delta_table_entries),
+        "Indexing policy of the PC table")
+    delta_table_replacement_policy = Param.BaseReplacementPolicy(LRURP(),
+        "Replacement policy of the PC table")
+
+class IPClassifierBasedL1Prefetcher(QueuedPrefetcher):
+    type = 'IPClassifierBasedL1Prefetcher'
+    cxx_class = 'gem5::prefetch::IPClassifierBasedL1'
+    cxx_header = "mem/cache/prefetch/ip_classifier_based_l1.hh"

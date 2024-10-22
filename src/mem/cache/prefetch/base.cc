@@ -73,6 +73,8 @@ Base::PrefetchInfo::PrefetchInfo(PacketPtr pkt, Addr addr, bool miss)
     write(pkt->isWrite()), // 标记请求是否为写操作
     paddress(pkt->req->getPaddr()), // 初始化物理地址
     cacheMiss(miss), // 标记是否为缓存未命中
+    insert_MSHR(pkt->insert_MSHR),
+    Cur_tick(pkt->cur_tick), is_cache_hit(!miss) , 
     cID(pkt->req->hasContextId() ? pkt->req->contextId() : 0) // 初始化上下文ID，如果请求中包含上下文ID则使用它，否则为0
 {
     unsigned int req_size = pkt->req->getSize();

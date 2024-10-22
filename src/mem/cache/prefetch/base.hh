@@ -118,6 +118,11 @@ class Base : public ClockedObject
         Addr paddress;
         /** Whether this event comes from a cache miss */
         bool cacheMiss;
+
+        bool insert_MSHR = false;
+        Tick Cur_tick = 0;
+        bool is_cache_hit;
+
         /** ContexID of the pc */
         ContextID cID;
         /** Pointer to the associated request data */
@@ -126,7 +131,26 @@ class Base : public ClockedObject
         bool fill_trigger;
         /** Whether this event is a pointer */
         bool is_pointer;
+
+
+
+
         public:
+
+        bool getInsertMSHR() const
+        {
+            return insert_MSHR;
+        }
+
+        Tick getCurTick() const
+        {
+            return Cur_tick;
+        }
+
+        bool getCacheHit() const
+        {
+            return is_cache_hit;
+        }
         /**
          * Obtains the address value of this Prefetcher address.
          * @return the addres value.

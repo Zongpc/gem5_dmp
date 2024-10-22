@@ -378,6 +378,17 @@ class Packet : public Printable
     Flags flags;
 
     public:
+    bool insert_MSHR = false;
+
+    void setInsertMSHR(){
+        insert_MSHR = true;
+    }
+
+    Tick cur_tick = 0;
+
+    void setCurTick(Tick tick){
+        cur_tick = tick;
+    }
     typedef MemCmd::Command Command;
 
     /// The command field of the packet.

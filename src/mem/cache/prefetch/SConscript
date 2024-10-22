@@ -36,7 +36,9 @@ SimObject('Prefetcher.py', sim_objects=[
     'DeltaCorrelatingPredictionTables', 'DCPTPrefetcher',
     'IrregularStreamBufferPrefetcher', 'SlimAMPMPrefetcher',
     'BOPPrefetcher', 'SBOOEPrefetcher', 'STeMSPrefetcher', 'PIFPrefetcher',
-    'DiffMatchingPrefetcher'])
+    'DiffMatchingPrefetcher',
+    'BertiPrefetcherHashedSetAssociative','BertiPrefetcher',
+    'IPClassifierBasedL1Prefetcher'])
 
 Source('access_map_pattern_matching.cc')
 Source('base.cc')
@@ -55,6 +57,8 @@ Source('spatio_temporal_memory_streaming.cc')
 Source('stride.cc')
 Source('tagged.cc')
 Source('diff_matching.cc')
+Source('berti.cc')
+Source('ip_classifier_based_l1.cc')
 
 DebugFlag('DMP')
 DebugFlag('POINTER')
