@@ -155,3 +155,4 @@ class System(SimObject):
         "Base of the 64KiB PA range used for "
         "memory-mapped m5ops. Set to 0 to disable.",
     )
+    arch_db = Param.ArchDBer(NULL,"arch db for this system")

@@ -42,19 +42,8 @@
 
 import m5
 from m5.objects import *
-from gem5.isas import ISA
-from gem5.runtime import get_runtime_isa
-
 from common.Caches import *
 from common import ObjectList
-
-monitor_pc_list = [
-    # 0x401050, 0x401088, 0x401058, 0x401064, 0x40107c
-    0x401010, 0x401048, 0x401018, 0x401024, 0x40103c
-]
-# monitor_pc_list = [
-#     0x400598, 0x4005b0, 0x4005bc
-# ]
 
 def _get_hwp(hwp_option):
     if hwp_option == None:
@@ -63,51 +52,22 @@ def _get_hwp(hwp_option):
     hwpClass = ObjectList.hwp_list.get(hwp_option)
     return hwpClass()
 
-def _get_replply(repl_option):
-    if repl_option == None:
-        return NULL
-
-    replClass = ObjectList.rp_list.get(repl_option)
-    return replClass()
-
-def _get_tag_store(tag_store_option):
-    if tag_store_option == None:
-        return NULL
-
-    tagClass = ObjectList.tag_list.get(tag_store_option)
-    return tagClass()
-
 def _get_cache_opts(level, options):
     opts = {}
 
-    size_attr = "{}_size".format(level)
+    size_attr = '{}_size'.format(level)
     if hasattr(options, size_attr):
-        opts["size"] = getattr(options, size_attr)
+        opts['size'] = getattr(options, size_attr)
 
-    assoc_attr = "{}_assoc".format(level)
+    assoc_attr = '{}_assoc'.format(level)
     if hasattr(options, assoc_attr):
-        opts["assoc"] = getattr(options, assoc_attr)
+        opts['assoc'] = getattr(options, assoc_attr)
 
-    # mshr_num = "{}_mshr_num".format(level)
-    # if hasattr(options, mshr_num):
-    #     opts["mshrs"] = getattr(options, mshr_num)
-
-    prefetcher_attr = "{}_hwp_type".format(level)
+    prefetcher_attr = '{}_hwp_type'.format(level)
     if hasattr(options, prefetcher_attr):
-        opts["prefetcher"] = _get_hwp(getattr(options, prefetcher_attr))
-    
-    repl_policy_attr = '{}_repl_policy'.format(level)
-    if hasattr(options, repl_policy_attr):
-        opts['replacement_policy'] = _get_replply(getattr(options, repl_policy_attr))
-    
-    tag_store_attr = '{}_tag_store'.format(level)
-    if hasattr(options, tag_store_attr):
-        opts['tags'] = _get_tag_store(getattr(options, tag_store_attr))
-
-    print(opts)
+        opts['prefetcher'] = _get_hwp(getattr(options, prefetcher_attr))
 
     return opts
-
 
 def config_cache(options, system):
     if options.external_memory_system and (options.caches or options.l2cache):
@@ -119,20 +79,15 @@ def config_cache(options, system):
 
     if options.cpu_type == "O3_ARM_v7a_3":
         try:
-            #import cores.arm.O3_ARM_v7a_three_level as core
-            #import cores.arm.O3_ARM_v7a_paper as core
-            import cores.arm.O3_ARM_v7a_CortexA15 as core
-            #import cores.arm.O3_ARM_v7a_N1 as core
+            import cores.arm.O3_ARM_v7a as core
         except:
             print("O3_ARM_v7a_3 is unavailable. Did you compile the O3 model?")
             sys.exit(1)
 
-        dcache_class, icache_class, l2_cache_class, walk_cache_class = (
-            core.O3_ARM_v7a_DCache,
-            core.O3_ARM_v7a_ICache,
-            core.O3_ARM_v7aL2,
-            None,
-        )
+        dcache_class, icache_class, l2_cache_class, walk_cache_class = \
+            core.O3_ARM_v7a_DCache, core.O3_ARM_v7a_ICache, \
+            core.O3_ARM_v7aL2, \
+            None
     elif options.cpu_type == "HPI":
         try:
             import cores.arm.HPI as core
@@ -140,21 +95,14 @@ def config_cache(options, system):
             print("HPI is unavailable.")
             sys.exit(1)
 
-        dcache_class, icache_class, l2_cache_class, walk_cache_class = (
-            core.HPI_DCache,
-            core.HPI_ICache,
-            core.HPI_L2,
-            None,
-        )
+        dcache_class, icache_class, l2_cache_class, walk_cache_class = \
+            core.HPI_DCache, core.HPI_ICache, core.HPI_L2, None
     else:
-        dcache_class, icache_class, l2_cache_class, walk_cache_class = (
-            L1_DCache,
-            L1_ICache,
-            L2Cache,
-            None,
-        )
+        dcache_class, icache_class, l2_cache_class, walk_cache_class = \
+            L1_DCache, L1_ICache, L2Cache, None
 
-        if get_runtime_isa() in [ISA.X86, ISA.RISCV]:
+        if buildEnv['TARGET_ISA'] in ['x86', 'riscv']:
+        #if buildEnv['TARGET_ISA'] in ['x86']:
             walk_cache_class = PageTableWalkerCache
 
     # Set the cache line size of the system
@@ -164,28 +112,129 @@ def config_cache(options, system):
     # minimal so that compute delays do not include memory access latencies.
     # Configure the compulsory L1 caches for the O3CPU, do not configure
     # any more caches.
-    if options.l2cache and options.elastic_trace_en:
-        fatal("When elastic trace is enabled, do not configure L2 caches.")
+    if options.l2cache:
+        assert (not hasattr(options, 'elastic_trace_en') or
+                not options.elastic_trace_en)
 
     if options.l2cache:
         # Provide a clock for the L2 and the L1-to-L2 bus here as they
         # are not connected using addTwoLevelCacheHierarchy. Use the
         # same clock as the CPUs.
-        system.l2 = l2_cache_class(
-            clk_domain=system.cpu_clk_domain, **_get_cache_opts("l2", options)
-        )
+        system.l2_caches = [l2_cache_class(clk_domain=system.cpu_clk_domain,
+                                           **_get_cache_opts('l2', options)) for i in range(options.num_cpus)]
+        system.tol2bus_list = [L2XBar(
+            clk_domain=system.cpu_clk_domain, width=256) for i in range(options.num_cpus)]
+        for i in range(options.num_cpus):
+            # system.l2_caches.append(l2_cache_class(clk_domain=system.cpu_clk_domain,
+            #                        **_get_cache_opts('l2', options)))
 
-        system.tol2bus = L2XBar(clk_domain=system.cpu_clk_domain)
-        system.l2.cpu_side = system.tol2bus.mem_side_ports
-        system.l2.mem_side = system.membus.cpu_side_ports
+            # system.tol2bus_list.append(L2XBar(clk_domain = system.cpu_clk_domain, width=256))
+            system.l2_caches[i].cpu_side = system.tol2bus_list[i].mem_side_ports
+            system.tol2bus_list[i].snoop_filter.max_capacity = "16MB"
+
+            if options.ideal_cache:
+                assert not options.l3cache, \
+                    "Ideal caches and L3s are exclusive options."
+                assert options.l2cache, "Ideal caches require L2s."
+                assert options.mem_type == "SimpleMemory", \
+                    "Ideal caches require SimpleMemory."
+
+                system.tol2bus_list[i].frontend_latency = 0
+                system.tol2bus_list[i].response_latency = 0
+                system.tol2bus_list[i].forward_latency = 0
+                system.tol2bus_list[i].header_latency = 0
+                system.tol2bus_list[i].snoop_response_latency = 0
+                system.tol2bus_list[i].width = 256 # byte per cycle
+
+                system.l2_caches[i].response_latency = 0
+                system.l2_caches[i].tag_latency = 1
+                system.l2_caches[i].data_latency = 1
+                system.l2_caches[i].sequential_access = False
+                system.l2_caches[i].writeback_clean = False
+                system.l2_caches[i].mshrs = 64
+
+            #if options.xiangshan_ecore:
+            #    system.l2_caches[i].response_latency = 66
+            #    system.l2_caches[i].writeback_clean = False
+
+            system.membus.frontend_latency = 0
+            system.membus.response_latency = 0
+            system.membus.forward_latency = 0
+            system.membus.header_latency = 0
+            system.membus.snoop_response_latency = 0
+            system.membus.width = 128 # byte per cycle
+
+
+        if options.l3cache:
+            system.l3 = L3Cache(clk_domain=system.cpu_clk_domain,
+                                        **_get_cache_opts('l3', options))
+            system.tol3bus = L2XBar(clk_domain=system.cpu_clk_domain, width=256)
+            system.tol3bus.snoop_filter.max_capacity = "32MB"
+            system.l3.cpu_side = system.tol3bus.mem_side_ports
+            system.l3.mem_side = system.membus.cpu_side_ports
+
+        for i in range(options.num_cpus):
+            if options.l3cache:
+                # l2 -> tol3bus -> l3
+                system.l2_caches[i].mem_side = system.tol3bus.cpu_side_ports
+                # l3 -> membus
+            else:
+                system.l2_caches[i].mem_side = system.membus.cpu_side_ports
 
     if options.memchecker:
         system.memchecker = MemChecker()
 
     for i in range(options.num_cpus):
         if options.caches:
-            icache = icache_class(**_get_cache_opts("l1i", options))
-            dcache = dcache_class(**_get_cache_opts("l1d", options))
+            icache = icache_class(**_get_cache_opts('l1i', options))
+            dcache = dcache_class(**_get_cache_opts('l1d', options))
+            if dcache.prefetcher != NULL:
+                dcache.prefetcher.registerTLB(system.cpu[i].mmu.dtb)
+                if options.l1d_hwp_type == 'XSCompositePrefetcher':
+                    if options.l1d_enable_spp:
+                        dcache.prefetcher.enable_spp = True
+                    if options.l1d_enable_cplx:
+                        dcache.prefetcher.enable_cplx = True
+                    dcache.prefetcher.pht_pf_level = options.pht_pf_level
+                    dcache.prefetcher.short_stride_thres = options.short_stride_thres
+                    dcache.prefetcher.fuzzy_stride_matching = False
+                    dcache.prefetcher.stream_pf_ahead = True
+                    dcache.prefetcher.bop_large.delay_queue_enable = True
+                    dcache.prefetcher.bop_large.bad_score = 10
+                    dcache.prefetcher.bop_small.delay_queue_enable = True
+                    dcache.prefetcher.bop_small.bad_score = 5
+                    dcache.prefetcher.queue_size = 128
+                    dcache.prefetcher.max_prefetch_requests_with_pending_translation = 128
+                    dcache.prefetcher.region_size = 64*16  # 64B * blocks per region
+
+                    dcache.prefetcher.berti.use_byte_addr = True
+                    dcache.prefetcher.berti.aggressive_pf = False
+                    dcache.prefetcher.berti.trigger_pht = True
+                    if options.cpu_type == 'DerivO3CPU':
+                        system.cpu[i].add_pf_downstream(dcache.prefetcher)
+                    if options.ideal_cache:
+                        dcache.prefetcher.stream_pf_ahead = False
+                    if options.l1d_use_xsstride:
+                        dcache.prefetcher.enable_berti = False
+                        dcache.prefetcher.enable_sstride = True
+
+            if options.ideal_cache:
+                icache.response_latency = 0
+                dcache.response_latency = 0
+
+            if options.l1_to_l2_pf_hint:
+                assert dcache.prefetcher != NULL and \
+                    system.l2_caches[i].prefetcher != NULL
+                dcache.prefetcher.add_pf_downstream(system.l2_caches[i].prefetcher)
+                system.l2_caches[i].prefetcher.queue_size = 64
+                system.l2_caches[i].prefetcher.max_prefetch_requests_with_pending_translation = 128
+
+            if options.l3cache and options.l2_to_l3_pf_hint:
+                assert system.l2_caches[i].prefetcher != NULL and \
+                    system.l3.prefetcher != NULL
+                system.l2_caches[i].prefetcher.add_pf_downstream(system.l3.prefetcher)
+                system.l3.prefetcher.queue_size = 64
+                system.l3.prefetcher.max_prefetch_requests_with_pending_translation = 128
 
             # If we have a walker cache specified, instantiate two
             # instances here
@@ -213,59 +262,8 @@ def config_cache(options, system):
 
             # When connecting the caches, the clock is also inherited
             # from the CPU in question
-            system.cpu[i].addPrivateSplitL1Caches(
-                icache, dcache, iwalkcache, dwalkcache
-            )
-
-            system.cpu[i].dcache.stats_pc_list = monitor_pc_list
-
-            #system.cpu[i].dcache.tags = FALRU()
-            #system.cpu[i].dcache.tags.min_tracked_cache_size = '16KiB'
-            #system.cpu[i].dcache.replacement_policy = LRUDEPRP()
-            #system.cpu[i].dcache.replacement_policy.pf_gap = getattr(options, "lru_pf_gap", 0) * 400
-
-            if options.l1d_hwp_type == "StridePrefetcher":
-                system.cpu[i].dcache.prefetcher.degree = getattr(options, "stride_degree", 1)
-
-            if options.l1d_hwp_type == "DiffMatchingPrefetcher":
-                system.cpu[i].dcache.prefetcher.set_probe_obj(
-                    system.cpu[i].dcache, system.cpu[i].dcache, system.cpu[i].dcache
-                )
-
-                system.cpu[i].dcache.prefetcher.degree = getattr(options, "stride_degree", 1)
-                system.cpu[i].dcache.prefetcher.stream_ahead_dist = getattr(options, "dmp_stream_ahead_dist", 64)
-                system.cpu[i].dcache.prefetcher.range_ahead_dist_level_1 = getattr(options, "dmp_range_ahead_dist_level_1", 0)
-                system.cpu[i].dcache.prefetcher.range_ahead_dist_level_2 = getattr(options, "dmp_range_ahead_dist_level_2", 0)
-                system.cpu[i].dcache.prefetcher.indir_range = getattr(options, "dmp_indir_range", 4)
-                system.cpu[i].dcache.prefetcher.replace_threshold_level_2 = getattr(options, "dmp_replace_th_level_2", 256)
-
-                # system.l2.prefetcher.queue_size = 1024*1024*16
-                # system.l2.prefetcher.max_prefetch_requests_with_pending_translation = 1024
-
-                system.cpu[i].dcache.prefetcher.auto_detect = True
-
-                if options.dmp_init_bench:
-                    system.cpu[i].dcache.prefetcher.index_pc_init = \
-                        ObjectList.dmp_bench_init_pc[ObjectList.dmp_bench_list[options.dmp_init_bench]][0]
-                    system.cpu[i].dcache.prefetcher.target_pc_init = \
-                        ObjectList.dmp_bench_init_pc[ObjectList.dmp_bench_list[options.dmp_init_bench]][1]
-                    system.cpu[i].dcache.prefetcher.range_pc_init = \
-                        ObjectList.dmp_bench_init_pc[ObjectList.dmp_bench_list[options.dmp_init_bench]][2]
-
-            # enable VA for all prefetcher
-            if options.l1d_hwp_type:
-                system.cpu[i].dcache.prefetcher.queue_size = 64
-                system.cpu[i].dcache.prefetcher.max_prefetch_requests_with_pending_translation = 64
-
-                system.cpu[i].dcache.prefetcher.prefetch_on_access = True
-                system.cpu[i].dcache.prefetcher.use_virtual_addresses = True
-                system.cpu[i].dcache.prefetcher.tag_vaddr = True
-                system.cpu[i].dcache.prefetcher.stats_pc_list = monitor_pc_list 
-                system.cpu[i].dcache.prefetcher.latency = 0#xymc
-                # system.cpu[i].dcache.prefetcher.latency = 5
-                if system.cpu[i].mmu.dtb:
-                    print("Adding DTLB to DCache prefetcher.")
-                    system.cpu[i].dcache.prefetcher.registerTLB(system.cpu[i].mmu.dtb)
+            system.cpu[i].addPrivateSplitL1Caches(icache, dcache,
+                                                  iwalkcache, dwalkcache)
 
             if options.memchecker:
                 # The mem_side ports of the caches haven't been connected yet.
@@ -279,240 +277,32 @@ def config_cache(options, system):
             # on these names.  For simplicity, we would advise configuring
             # it to use this naming scheme; if this isn't possible, change
             # the names below.
-            if get_runtime_isa() in [ISA.X86, ISA.ARM, ISA.RISCV]:
+            if buildEnv['TARGET_ISA'] in ['x86', 'arm', 'riscv']:
                 system.cpu[i].addPrivateSplitL1Caches(
-                    ExternalCache("cpu%d.icache" % i),
-                    ExternalCache("cpu%d.dcache" % i),
-                    ExternalCache("cpu%d.itb_walker_cache" % i),
-                    ExternalCache("cpu%d.dtb_walker_cache" % i),
-                )
+                        ExternalCache("cpu%d.icache" % i),
+                        ExternalCache("cpu%d.dcache" % i),
+                        ExternalCache("cpu%d.itb_walker_cache" % i),
+                        ExternalCache("cpu%d.dtb_walker_cache" % i))
             else:
                 system.cpu[i].addPrivateSplitL1Caches(
-                    ExternalCache("cpu%d.icache" % i),
-                    ExternalCache("cpu%d.dcache" % i),
-                )
-
-        if options.tlb_size:
-            system.cpu[i].mmu.dtb.size = getattr(options, "tlb_size", 65536)
-            system.cpu[i].mmu.stage2_dtb.size = getattr(options, "tlb_size", 65536) // 2
-
-        system.cpu[i].mmu.dtb.can_serialize = True
-
-        # no need to edit for default False. Used to config here.
-        # system.cpu[i].mmu.dtb.pf_translation_timing = False
+                        ExternalCache("cpu%d.icache" % i),
+                        ExternalCache("cpu%d.dcache" % i))
 
         system.cpu[i].createInterruptController()
         if options.l2cache:
-            assert(i==0) # only support single core 
-            if options.l2_hwp_type == "StridePrefetcher":
-                system.l2.prefetcher.degree = getattr(options, "stride_degree", 1)
-
-            if options.l2_hwp_type == "IrregularStreamBufferPrefetcher":
-                system.l2.prefetcher.degree = getattr(options, "stride_degree", 1)
-
-            if options.l2_hwp_type == "DiffMatchingPrefetcher":
-
-                if options.dmp_notify == "l1":
-                    system.l2.prefetcher.set_probe_obj(
-                        system.cpu[i].dcache, system.cpu[i].dcache, system.l2
-                    )
-                if options.dmp_notify == "l2":
-                    system.l2.prefetcher.set_probe_obj(system.cpu[i].dcache, system.l2, system.l2)
-
-                if options.l1d_hwp_type == "StridePrefetcher":
-                    print("Add L1 StridePrefetcher as L2 DMP helper.")
-                    system.l2.prefetcher.set_pf_helper(system.cpu[i].dcache.prefetcher)
-                else:
-                    system.l2.prefetcher.degree = getattr(options, "stride_degree", 1)
-
-                system.l2.prefetcher.stream_ahead_dist = getattr(options, "dmp_stream_ahead_dist", 64)
-                # system.l2.prefetcher.range_ahead_dist = getattr(options, "dmp_range_ahead_dist", 0)
-                system.l2.prefetcher.indir_range = getattr(options, "dmp_indir_range", 4)
-
-                system.l2.prefetcher.auto_detect = True
-
-                system.l2.prefetcher.queue_size = 1024*16
-                system.l2.prefetcher.max_prefetch_requests_with_pending_translation = 1024
-                # system.l2.prefetcher.queue_size = 64
-                # system.l2.prefetcher.max_prefetch_requests_with_pending_translation = 64
-
-                if options.dmp_init_bench:
-                    system.l2.prefetcher.index_pc_init = \
-                        ObjectList.dmp_bench_init_pc[ObjectList.dmp_bench_list[options.dmp_init_bench]][0]
-                    system.l2.prefetcher.target_pc_init = \
-                        ObjectList.dmp_bench_init_pc[ObjectList.dmp_bench_list[options.dmp_init_bench]][1]
-                    system.l2.prefetcher.range_pc_init = \
-                        ObjectList.dmp_bench_init_pc[ObjectList.dmp_bench_list[options.dmp_init_bench]][2]
-
-            # enable VA for all prefetcher
-            if options.l2_hwp_type:
-                system.l2.prefetcher.on_miss = False
-                system.l2.prefetcher.use_virtual_addresses = True
-                system.l2.prefetcher.tag_vaddr = True
-                system.l2.prefetcher.stats_pc_list = monitor_pc_list 
-                system.l2.prefetcher.latency = 15
-                #system.l2.prefetcher.latency = 17
-                if system.cpu[i].mmu.dtb:
-                    print("Adding DTLB to L2 prefetcher.")
-                    system.l2.prefetcher.registerTLB(system.cpu[i].mmu.dtb)
-
-            system.l2.stats_pc_list = monitor_pc_list
-
             system.cpu[i].connectAllPorts(
-                system.tol2bus.cpu_side_ports,
-                system.membus.cpu_side_ports,
-                system.membus.mem_side_ports,
-            )
+                system.tol2bus_list[i].cpu_side_ports,
+                system.membus.cpu_side_ports, system.membus.mem_side_ports)
+            if system.l2_caches[i].prefetcher != NULL:
+                print("Add dtb for L2 prefetcher")
+                system.l2_caches[i].prefetcher.registerTLB(system.cpu[i].mmu.dtb)
         elif options.external_memory_system:
             system.cpu[i].connectUncachedPorts(
-                system.membus.cpu_side_ports, system.membus.mem_side_ports
-            )
+                system.membus.cpu_side_ports, system.membus.mem_side_ports)
         else:
             system.cpu[i].connectBus(system.membus)
 
-    return system
-
-def config_three_level_cache(options, system):
-    if options.external_memory_system and (options.caches or options.l2cache):
-        print("External caches and internal caches are exclusive options.\n")
-        sys.exit(1)
-
-    if options.external_memory_system:
-        ExternalCache = ExternalCacheFactory(options.external_memory_system)
-
-    if options.cpu_type == "O3_ARM_v7a_3":
-        try:
-            import cores.arm.O3_ARM_v7a_three_level as core
-        except:
-            print("O3_ARM_v7a_3 is unavailable. Did you compile the O3 model?")
-            sys.exit(1)
-
-        dcache_class, icache_class, l2_cache_class, l3_cache_class, walk_cache_class = (
-            core.O3_ARM_v7a_DCache,
-            core.O3_ARM_v7a_ICache,
-            core.O3_ARM_v7aL2,
-            core.O3_ARM_v7aL3,
-            None,
-        )
-    else:
-        dcache_class, icache_class, l2_cache_class, l3_cache_class, walk_cache_class = (
-            L1_DCache,
-            L1_ICache,
-            L2Cache,
-            L3Cache,
-            None,
-        )
-
-        if get_runtime_isa() in [ISA.X86, ISA.RISCV]:
-            walk_cache_class = PageTableWalkerCache
-
-    # Set the cache line size of the system
-    system.cache_line_size = options.cacheline_size
-
-    # If elastic trace generation is enabled, make sure the memory system is
-    # minimal so that compute delays do not include memory access latencies.
-    # Configure the compulsory L1 caches for the O3CPU, do not configure
-    # any more caches.
-    if options.l2cache and options.elastic_trace_en:
-        fatal("When elastic trace is enabled, do not configure L2 caches.")
-
-    if options.l3cache and options.elastic_trace_en:
-        fatal("When elastic trace is enabled, do not configure L3 caches.")
-
-    if options.l3cache:
-        # Provide a clock for the L2 and the L1-to-L2 bus here as they
-        # are not connected using addTwoLevelCacheHierarchy. Use the
-        # same clock as the CPUs.
-        system.l3 = l3_cache_class(
-            clk_domain=system.cpu_clk_domain, **_get_cache_opts("l3", options)
-        )
-
-        system.tol3bus = L3XBar(clk_domain=system.cpu_clk_domain)
-        system.l3.cpu_side = system.tol3bus.mem_side_ports
-        system.l3.mem_side = system.membus.cpu_side_ports
-
-    if options.memchecker:
-        system.memchecker = MemChecker()
-
-    for i in range(options.num_cpus):
-        if options.caches:
-            icache = icache_class(**_get_cache_opts("l1i", options))
-            dcache = dcache_class(**_get_cache_opts("l1d", options))
-
-            # If we have a walker cache specified, instantiate two
-            # instances here
-            if walk_cache_class:
-                iwalkcache = walk_cache_class()
-                dwalkcache = walk_cache_class()
-            else:
-                iwalkcache = None
-                dwalkcache = None
-            
-            system.cpu[i].addPrivateSplitL1Caches(
-                icache, dcache, iwalkcache, dwalkcache
-            )
-            
-        if options.tlb_size:
-            system.cpu[i].mmu.dtb.size = getattr(options, "tlb_size", 65536)
-            system.cpu[i].mmu.stage2_dtb.size = getattr(options, "tlb_size", 65536) // 2
-
-        system.cpu[i].mmu.dtb.can_serialize = True
-
-        # no need to edit for default False. Used to config here.
-        # system.cpu[i].mmu.dtb.pf_translation_timing = False
-
-        system.cpu[i].createInterruptController()
-
-        if options.l2cache and options.l3cache:
-            system.cpu[i].l2 = l2_cache_class(
-                clk_domain=system.cpu_clk_domain, **_get_cache_opts("l2", options)
-            )
-
-            if options.l2_hwp_type == "StridePrefetcher":
-                system.cpu[i].l2.prefetcher.degree = getattr(options, "stride_degree", 1)
-
-            if options.l2_hwp_type == "IrregularStreamBufferPrefetcher":
-                system.cpu[i].l2.prefetcher.degree = getattr(options, "stride_degree", 1)
-
-            if options.l2_hwp_type == "DiffMatchingPrefetcher":
-                system.cpu[i].l2.prefetcher.set_probe_obj(system.cpu[i].dcache, system.cpu[i].l2)
-                system.cpu[i].l2.prefetcher.degree = getattr(options, "stride_degree", 1)
-
-                system.cpu[i].l2.prefetcher.stream_ahead_dist = getattr(options, "dmp_stream_ahead_dist", 64)
-                system.cpu[i].l2.prefetcher.indir_range = getattr(options, "dmp_indir_range", 4)
-                #system.l2.prefetcher.queue_size = 1024*1024*16
-                #system.l2.prefetcher.max_prefetch_requests_with_pending_translation = 1024
-
-                if options.dmp_init_bench:
-                    system.cpu[i].l2.prefetcher.index_pc_init = \
-                        ObjectList.dmp_bench_init_pc[ObjectList.dmp_bench_list[options.dmp_init_bench]][0]
-                    system.cpu[i].l2.prefetcher.target_pc_init = \
-                        ObjectList.dmp_bench_init_pc[ObjectList.dmp_bench_list[options.dmp_init_bench]][1]
-                    system.cpu[i].l2.prefetcher.range_pc_init = \
-                        ObjectList.dmp_bench_init_pc[ObjectList.dmp_bench_list[options.dmp_init_bench]][2]
-                
-
-
-            # enable VA for all prefetcher
-            if options.l2_hwp_type:
-                system.cpu[i].l2.prefetcher.use_virtual_addresses = True
-                if system.cpu[i].mmu.dtb:
-                    print("Adding DTLB to L2 prefetcher.")
-                    system.cpu[i].l2.prefetcher.registerTLB(system.cpu[i].mmu.dtb)
-
-            system.cpu[i].tol2bus = L2XBar(clk_domain=system.cpu_clk_domain)
-            system.cpu[i].l2.cpu_side = system.cpu[i].tol2bus.mem_side_ports
-            system.cpu[i].l2.mem_side = system.tol3bus.cpu_side_ports
-
-            system.cpu[i].connectAllPorts(
-                system.cpu[i].tol2bus.cpu_side_ports,
-                system.membus.cpu_side_ports,
-                system.membus.mem_side_ports
-            )
-        
-        else:
-            system.cpu[i].connectBus(system.membus)
-
+    print('Finish memory system configuration')
     return system
 
 # ExternalSlave provides a "port", but when that port connects to a cache,
@@ -521,20 +311,17 @@ def config_three_level_cache(options, system):
 # eliminating distracting changes elsewhere in the config code.
 class ExternalCache(ExternalSlave):
     def __getattr__(cls, attr):
-        if attr == "cpu_side":
+        if (attr == "cpu_side"):
             attr = "port"
         return super(ExternalSlave, cls).__getattr__(attr)
 
     def __setattr__(cls, attr, value):
-        if attr == "cpu_side":
+        if (attr == "cpu_side"):
             attr = "port"
         return super(ExternalSlave, cls).__setattr__(attr, value)
 
-
 def ExternalCacheFactory(port_type):
     def make(name):
-        return ExternalCache(
-            port_data=name, port_type=port_type, addr_ranges=[AllMemory]
-        )
-
+        return ExternalCache(port_data=name, port_type=port_type,
+                             addr_ranges=[AllMemory])
     return make

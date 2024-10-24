@@ -61,12 +61,31 @@
 #include "base/flags.hh"
 #include "base/types.hh"
 #include "cpu/inst_seq.hh"
+#include "cpu/o3/dyn_inst_xsmeta.hh"
 #include "mem/htm.hh"
 #include "sim/cur_tick.hh"
 
 namespace gem5
 {
 
+enum PrefetchSourceType
+{
+    PF_NONE = 0,
+    SStream,
+    SStride,
+    SPht,
+    HWP_BOP,
+    SPP,
+    CMC,
+    IPCP,
+    IPCP_CS,
+    IPCP_CPLX,
+    Berti,
+    StoreStream,
+    CDP,
+    SOpt,
+    NUM_PF_SOURCES
+};
 /**
  * Special TaskIds that are used for per-context-switch stats dumps
  * and Cache Occupancy. Having too many tasks seems to be a problem
@@ -251,6 +270,8 @@ class Request
             remote TLB Sync request has completed */
         TLBI_EXT_SYNC_COMP          = 0x0000800000000000,
 
+        // this request is used for store pf train
+        STORE_PF_TRAIN              = 0x0001000000000000,
         /**
          * These flags are *not* cleared when a Request object is
          * reused (assigned a new address).
@@ -342,6 +363,45 @@ class Request
     using LocalAccessor =
         std::function<Cycles(ThreadContext *tc, Packet *pkt)>;
 
+    typedef struct XsMetadata
+    {
+        bool validXsMetadata;
+        o3::XsDynInstMetaPtr instXsMetadata;
+        PrefetchSourceType prefetchSource;
+        int prefetchDepth;
+
+        XsMetadata() :
+            validXsMetadata(false),
+            instXsMetadata(nullptr),
+            prefetchSource(PF_NONE),
+            prefetchDepth(0) {}
+
+        XsMetadata(o3::XsDynInstMetaPtr instMeta) :
+            validXsMetadata(true),
+            instXsMetadata(instMeta),
+            prefetchSource(PF_NONE) ,
+            prefetchDepth(0) {}
+            
+
+        XsMetadata(PrefetchSourceType pfSource) :
+            validXsMetadata(true),
+            instXsMetadata(nullptr),
+            prefetchSource(pfSource) ,
+            prefetchDepth(0) {}
+
+        XsMetadata(PrefetchSourceType pfSource,int pfDepth) :
+            validXsMetadata(true),
+            instXsMetadata(nullptr),
+            prefetchSource(pfSource) ,
+            prefetchDepth(pfDepth) {}
+
+        void invalidate() {
+            validXsMetadata = false;
+            instXsMetadata = nullptr;
+            prefetchSource = PF_NONE;
+        }
+    } XsMetadata;
+
   private:
     typedef uint16_t PrivateFlagsType;
     typedef gem5::Flags<PrivateFlagsType> PrivateFlags;
@@ -370,6 +430,8 @@ class Request
         VALID_HTM_ABORT_CAUSE = 0x00000400,
         /** Whether or not the instruction count is valid. */
         VALID_INST_COUNT      = 0x00000800,
+        /** Whether or not the XS metadata is valid. */
+        VALID_XS_METADATA     = 0x00001000,
         /**
          * These flags are *not* cleared when a Request object is reused
          * (assigned a new address).
@@ -459,6 +521,9 @@ class Request
     /** Sequence number of the instruction that creates the request */
     InstSeqNum _reqInstSeqNum = 0;
 
+    /** metadata for xs */
+    XsMetadata _xsMetadata;
+
     /** A pointer to an atomic operation */
     AtomicOpFunctorPtr atomicOpFunctor = nullptr;
 
@@ -512,6 +577,7 @@ class Request
           _taskId(other._taskId), _vaddr(other._vaddr),
           _extraData(other._extraData), _contextId(other._contextId),
           _pc(other._pc), _reqInstSeqNum(other._reqInstSeqNum),
+          _xsMetadata(other._xsMetadata),
           _localAccessor(other._localAccessor),
           translateDelta(other.translateDelta),
           accessDelta(other.accessDelta), depth(other.depth)
@@ -984,6 +1050,7 @@ class Request
     void setAccessLatency() { accessDelta = curTick() - _time - translateDelta; }
     Tick getAccessLatency() const { return accessDelta; }
 
+
     /**
      * Accessor for the sequence number of instruction that creates the
      * request.
@@ -1008,6 +1075,31 @@ class Request
         _reqInstSeqNum = seq_num;
     }
 
+    /**
+     * Accessor for the metadata from xiangshan CPU attached to this
+     * request.
+     */
+    bool
+    hasXsMetadata() const
+    {
+        return privateFlags.isSet(VALID_XS_METADATA);
+    }
+
+    XsMetadata
+    getXsMetadata() const
+    {
+        assert(hasXsMetadata());
+        return _xsMetadata;
+    }
+
+    void
+    setXsMetadata(const XsMetadata xs_metadata)
+    {
+        privateFlags.set(VALID_XS_METADATA);
+        _xsMetadata = xs_metadata;
+    }
+
+    bool isStorePFTrain() const { return _flags.isSet(STORE_PF_TRAIN); }
     /** Accessor functions for flags. Note that these are for testing
         only; setting flags should be done via setFlags(). */
     bool isUncacheable() const { return _flags.isSet(UNCACHEABLE); }
@@ -1108,6 +1200,18 @@ class Request
     bool isCacheInvalidate() const { return _flags.isSet(INVALIDATE); }
     bool isCacheMaintenance() const { return _flags.isSet(CLEAN|INVALIDATE); }
     /** @} */
+  protected:
+    int pfSource{PrefetchSourceType::PF_NONE};
+    int pfDepth = 0;
+    bool firstReqAfterSquash{false};
+  public:
+    void setPFSource(PrefetchSourceType pf_source) { pfSource = pf_source; }
+    PrefetchSourceType getPFSource() const { return static_cast<PrefetchSourceType>(pfSource); }
+    void setPFDepth(int pf_depth) { pfDepth = pf_depth; }
+    int getPFDepth() const { return pfDepth; }
+    bool isFromBOP() const { return pfSource == PrefetchSourceType::HWP_BOP; }
+    bool isFirstReqAfterSquash() { return firstReqAfterSquash; }
+    void setFirstReqAfterSquash() { firstReqAfterSquash = true; }
 };
 
 } // namespace gem5

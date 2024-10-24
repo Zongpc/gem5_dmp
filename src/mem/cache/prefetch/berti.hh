@@ -1,218 +1,217 @@
-/*
- * Copyright (c) 2023 XJTU
- * Copyright (c) 2012-2013, 2015 ARM Limited
- * All rights reserved
- *
- * The license below extends only to copyright in the software and shall
- * not be construed as granting a license to any other intellectual
- * property including but not limited to intellectual property relating
- * to a hardware implementation of the functionality of the software
- * licensed hereunder.  You may use the software subject to the license
- * terms below provided that you ensure that this notice is replicated
- * unmodified and in its entirety in all distributions of the software,
- * modified or unmodified, in source code or in binary form.
- *
- * Copyright (c) 2005 The Regents of The University of Michigan
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met: redistributions of source code must retain the above copyright
- * notice, this list of conditions and the following disclaimer;
- * redistributions in binary form must reproduce the above copyright
- * notice, this list of conditions and the following disclaimer in the
- * documentation and/or other materials provided with the distribution;
- * neither the name of the copyright holders nor the names of its
- * contributors may be used to endorse or promote products derived from
- * this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
+//
+// Created by linjiawei on 22-10-31.
+//
 
-/**
- * @file
- * Describes a strided prefetcher.
- */
+#ifndef __MEM_CACHE_PREFETCH_BERTI_HH__
+#define __MEM_CACHE_PREFETCH_BERTI_HH__
 
-#ifndef __MEM_CACHE_PREFETCH_STRIDE_HH__
-#define __MEM_CACHE_PREFETCH_STRIDE_HH__
-
-#include <string>
 #include <unordered_map>
 #include <vector>
 
-#include "base/sat_counter.hh"
+#include <boost/compute/detail/lru_cache.hpp>
+
+#include "base/statistics.hh"
 #include "base/types.hh"
+#include "debug/BertiPrefetcher.hh"
 #include "mem/cache/prefetch/associative_set.hh"
 #include "mem/cache/prefetch/queued.hh"
-#include "mem/cache/replacement_policies/replaceable_entry.hh"
-#include "mem/cache/tags/indexing_policies/set_associative.hh"
 #include "mem/packet.hh"
-#include "params/BertiPrefetcherHashedSetAssociative.hh"
+#include "params/BertiPrefetcher.hh"
 
 namespace gem5
 {
 
-class BaseIndexingPolicy;
-GEM5_DEPRECATED_NAMESPACE(ReplacementPolicy, replacement_policy);
-namespace replacement_policy
-{
-    class Base;
-}
 struct BertiPrefetcherParams;
 
 GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
+
 namespace prefetch
 {
 
-/**
- * Override the default set associative to apply a specific hash function
- * when extracting a set.
- */
-class BertiPrefetcherHashedSetAssociative : public SetAssociative
+class BertiPrefetcher : public Queued
 {
-  protected:
-    uint32_t extractSet(const Addr addr) const override;
-    Addr extractTag(const Addr addr) const override;
 
-  public:
-    BertiPrefetcherHashedSetAssociative(
-        const BertiPrefetcherHashedSetAssociativeParams &p)
-      : SetAssociative(p)
+    int maxAddrListSize;
+    int maxDeltaListSize;
+    int maxDeltafound;
+
+  protected:
+    struct HistoryInfo
     {
+        Addr vAddr{0};
+        Cycles timestamp{0};
+
+        bool operator == (const HistoryInfo &rhs) const
+        {
+            return vAddr == rhs.vAddr;
+        }
+    };
+
+    enum DeltaStatus { L1_PREF, L2_PREF, NO_PREF };
+    struct DeltaInfo
+    {
+        uint8_t coverageCounter = 0;
+        int delta = 0;
+        DeltaStatus status = NO_PREF;
+    };
+
+    class TableOfDeltasEntry
+    {
+      public:
+        std::vector<DeltaInfo> deltas;
+        uint8_t counter = 0;
+        DeltaInfo bestDelta;
+
+        void resetConfidence(bool reset_status)
+        {
+            counter = 0;
+            for (auto &info : deltas) {
+                info.coverageCounter = 0;
+                if (reset_status) {
+                    info.status = NO_PREF;
+                }
+            }
+            if (reset_status) {
+                bestDelta.delta = 0;
+                bestDelta.status = NO_PREF;
+            }
+        }
+
+        void updateStatus()
+        {
+            uint8_t max_cov = 0;
+            for (auto &info : deltas) {
+                info.status = (info.coverageCounter >= 2) ? L2_PREF : NO_PREF;
+                info.status = (info.coverageCounter >= 4) ? L1_PREF : info.status;
+                if (info.status != NO_PREF && info.coverageCounter > max_cov) {
+                    max_cov = info.coverageCounter;
+                    bestDelta = info;
+                }
+            }
+            if (max_cov == 0) {
+                bestDelta.delta = 0;
+                bestDelta.status = NO_PREF;
+            }
+        }
+
+        TableOfDeltasEntry(int size) {
+            deltas.resize(size);
+        }
+    };
+
+    class HistoryTableEntry : public TableOfDeltasEntry, public TaggedEntry
+    {
+      public:
+        bool hysteresis = false;
+        Addr pc = ~(0UL);
+        /** FIFO of demand miss history. */
+        std::list<HistoryInfo> history;
+
+        HistoryTableEntry(int deltaTableSize) : TableOfDeltasEntry(deltaTableSize) {}
+    };
+
+    AssociativeSet<HistoryTableEntry> historyTable;
+
+
+    Cycles hitSearchLatency;
+    const bool aggressivePF;
+    const bool useByteAddr;
+    const bool triggerPht;
+
+    struct BertiStats : public statistics::Group
+    {
+        BertiStats(statistics::Group *parent);
+
+        statistics::Scalar trainOnHit;
+        statistics::Scalar trainOnMiss;
+        statistics::Scalar notifySkippedCond1;
+        statistics::Scalar notifySkippedIsPF;
+        statistics::Scalar notifySkippedNoEntry;
+        statistics::Scalar entryEvicts;
+    } statsBerti;
+
+
+    /** Update history table on demand miss. */
+    HistoryTableEntry* updateHistoryTable(const PrefetchInfo &pfi);
+
+    /** Search for timely deltas. */
+    void searchTimelyDeltas(HistoryTableEntry &entry,
+                            const Cycles &latency,
+                            const Cycles &demand_cycle,
+                            const Addr &blk_addr);
+
+
+    void printDeltaTableEntry(const TableOfDeltasEntry &entry) {
+        DPRINTF(BertiPrefetcher, "Entry Counter: %d\n", entry.counter);
+        for (auto &info : entry.deltas) {
+            DPRINTF(BertiPrefetcher,
+                    "=>[delta: %d coverage: %d status: %d]\n",
+                    info.delta, info.coverageCounter, info.status);
+        }
     }
-    ~BertiPrefetcherHashedSetAssociative() = default;
-};
 
-class Berti : public Queued
-{
-  protected:
+    Addr pcHash(Addr pc) { return (pc >> 1); }
 
-    const bool useRequestorId;
+    int lastUsedBestDelta;
+    int evictedBestDelta;
 
-    const int degree;
+    boost::compute::detail::lru_cache<Addr, Addr> trainBlockFilter;
 
-    /**
-     * Create a new history table , elements are same as the paper.
-     */
-    const struct HistoryTableInfo
-    {
-        const int assoc;
-        const int numEntries;
+    std::unordered_map<int64_t, uint64_t> topDeltas;
 
-        BaseIndexingPolicy* const indexingPolicy;
-        replacement_policy::Base* const replacementPolicy;
+    std::unordered_map<int64_t, uint64_t> evictedDeltas;
 
-        HistoryTableInfo(int assoc, int num_entries,
-            BaseIndexingPolicy* indexing_policy,
-            replacement_policy::Base* repl_policy)
-          : assoc(assoc), numEntries(num_entries),
-            indexingPolicy(indexing_policy), replacementPolicy(repl_policy)
-        {
-        }
-    } HistoryTableInfo;
-
-    /** Tagged by hashed PCs. */
-    struct HistoryEntry : public TaggedEntry
-    {
-        HistoryEntry();
-        void invalidate() override;
-
-        int history_set_num;
-        struct history_set{
-            Addr line_address;  // same as line address in Berti
-            Tick timestamp;     // same as timestamp in Berti
-        }   history_sets[16];
-
-    };
-    typedef AssociativeSet<HistoryEntry> HistoryTable;
-    std::unordered_map<int, HistoryTable> HistoryTables;
-
-    /**
-     * Create a new delta table , elements are same as the paper.
-     */
-    const struct DeltaTableInfo
-    {
-        const int assoc;
-        const int numEntries;
-
-        BaseIndexingPolicy* const indexingPolicy;
-        replacement_policy::Base* const replacementPolicy;
-
-        DeltaTableInfo(int assoc, int num_entries,
-            BaseIndexingPolicy* indexing_policy,
-            replacement_policy::Base* repl_policy)
-          : assoc(assoc), numEntries(num_entries),
-            indexingPolicy(indexing_policy), replacementPolicy(repl_policy)
-        {
-        }
-    } DeltaTableInfo;
-
-    /** Tagged by hashed PCs. */
-    struct DeltaEntry : public TaggedEntry
-    {
-
-        DeltaEntry();
-        void invalidate() override;
-
-        int counter;
-        int delta_array_num;
-        int access_array_num;
-
-        struct access_array{
-            Addr line_address;
-            Tick access_tick;
-        } access_arrays[16];
-
-        struct delta_array{
-            int delta;
-            int coverage;
-            int status; // status = 1( >65% ) , 2( >30% & <65%)
-        }   delta_arrays[16];
-
-    };
-    typedef AssociativeSet<DeltaEntry> DeltaTable;
-    std::unordered_map<int, DeltaTable> DeltaTables;
-
-    /**
-     * Try to find a table of entries for the given context. If none is
-     * found, a new table is created.
-     *
-     * @param context The context to be searched for.
-     * @return The table corresponding to the given context.
-     */
-    HistoryTable* findHistoryTable(int context);
-
-    /**
-     * Create a PC table for the given context.
-     *
-     * @param context The context of the new PC table.
-     * @return The new PC table
-     */
-    HistoryTable* allocateHistoryContext(int context);
-
-    DeltaTable* findDeltaTable(int context);
-    
-    DeltaTable* allocateDeltaContext(int context);
+    const bool dumpTopDeltas;
 
   public:
-    Berti(const BertiPrefetcherParams &p);
 
-    void calculatePrefetch(const PrefetchInfo &pfi,
-                           std::vector<AddrPriority> &addresses) override;
+    boost::compute::detail::lru_cache<Addr, Addr> *filter;
+
+    BertiPrefetcher(const BertiPrefetcherParams &p);
+
+    void calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addresses) override
+    {
+        panic("not implemented");
+    };
+
+    void calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addresses, bool late,
+                           PrefetchSourceType pf_source, bool miss_repeat) override
+    {
+        panic("not implemented");
+    };
+
+    
+    void calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addresses, bool late,
+                           PrefetchSourceType pf_source, bool miss_repeat, Addr &local_delta_pf_addr);
+
+    int getEvictBestDelta() { return evictedBestDelta; }
+
+    int getBestDelta() { return lastUsedBestDelta; }
+
+    bool sendPFWithFilter(const PrefetchInfo &pfi, Addr addr, std::vector<AddrPriority> &addresses, int prio,
+                          PrefetchSourceType src, bool using_best_delta_and_confident);
+
+    void notifyFill(const PacketPtr &pkt) override;
+
+    bool shouldTrain(bool is_miss, const PrefetchInfo &pfi) {
+        if (is_miss) {
+            // Currently, XSCompositePrefetcher lets multiple accesses to the same block be seen by prefetchers.
+            // Maybe, we should filter them out
+            // return !trainBlockFilter.contains(blockIndex(pfi.getAddr()));
+            return true;
+        } else {
+            // This is to let multiple accessses into the same block be seen by different PC entryeis
+            // return !trainBlockFilter.contains(blockIndex(pfi.getAddr())) &&
+            //        historyTable.findEntry(pcHash(pfi.getPC()), pfi.isSecure()) != nullptr;
+            return historyTable.findEntry(pcHash(pfi.getPC()), pfi.isSecure()) != nullptr;
+        }
+    }
+
 };
 
-} // namespace prefetch
-} // namespace gem5
+}
 
-#endif // __MEM_CACHE_PREFETCH_STRIDE_HH__
+}
+
+
+#endif

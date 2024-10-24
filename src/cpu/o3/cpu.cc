@@ -113,6 +113,9 @@ CPU::CPU(const BaseO3CPUParams &params)
       globalSeqNum(1),
       system(params.system),
       lastRunningCycle(curCycle()),
+      archDBer(params.arch_db),
+      ipc_r("ipc", "", 1000, archDBer),
+      cpi_r("cpi", "", 1000, archDBer),
       cpuStats(this)
 {
     fatal_if(FullSystem && params.numThreads > 1,

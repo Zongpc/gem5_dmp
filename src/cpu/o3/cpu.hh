@@ -69,6 +69,7 @@
 #include "cpu/timebuf.hh"
 #include "params/BaseO3CPU.hh"
 #include "sim/process.hh"
+#include "sim/rolling.hh"
 
 namespace gem5
 {
@@ -570,6 +571,10 @@ class CPU : public BaseCPU
         return iew.ldstQueue.getDataPort();
     }
 
+    ArchDBer *archDBer;
+    /** Rolling Stat for the number of all-thread committed instructions */
+    Rolling ipc_r;
+    Rolling cpi_r;
     struct CPUStats : public statistics::Group
     {
         CPUStats(CPU *cpu);

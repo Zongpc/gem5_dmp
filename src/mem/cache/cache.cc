@@ -52,7 +52,6 @@
 #include "base/logging.hh"
 #include "base/trace.hh"
 #include "base/types.hh"
-#include "debug/HWPrefetch.hh"
 #include "debug/Cache.hh"
 #include "debug/CacheTags.hh"
 #include "debug/CacheVerbose.hh"
@@ -67,25 +66,17 @@
 namespace gem5
 {
 
-// 构造函数：初始化Cache对象
-//
-// 参数:
-// - p: CacheParams的引用，包含构建Cache对象所需的参数
-//
-// 说明:
-// - 本构造函数通过断言确保tags和replacement_policy参数不为空
-// - 初始化基类(BaseCache)和doFastWrites成员变量
 Cache::Cache(const CacheParams &p)
-    : BaseCache(p, p.system->cacheLineSize()), // 初始化基类，使用系统的缓存行大小
-    doFastWrites(true) // 初始化doFastWrites为true，允许快速写入
+    : BaseCache(p, p.system->cacheLineSize()),
+      doFastWrites(true)
 {
-    assert(p.tags); // 确保tags不为空
-    assert(p.replacement_policy); // 确保replacement_policy不为空
+    assert(p.tags);
+    assert(p.replacement_policy);
 }
 
 void
 Cache::satisfyRequest(PacketPtr pkt, CacheBlk *blk,
-                    bool deferred_response, bool pending_downgrade)
+                      bool deferred_response, bool pending_downgrade)
 {
     BaseCache::satisfyRequest(pkt, blk);
 
@@ -98,12 +89,15 @@ Cache::satisfyRequest(PacketPtr pkt, CacheBlk *blk,
             if (pkt->needsWritable()) {
                 // sanity check
                 assert(pkt->cmd == MemCmd::ReadExReq ||
-                    pkt->cmd == MemCmd::SCUpgradeFailReq);
+                       pkt->cmd == MemCmd::SCUpgradeFailReq);
                 assert(!pkt->hasSharers());
 
                 // if we have a dirty copy, make sure the recipient
                 // keeps it marked dirty (in the modified state)
                 if (blk->isSet(CacheBlk::DirtyBit)) {
+                    DPRINTF(CacheVerbose,
+                            "%s set packet %s (%#lx) as cache responding, when blk is dirty and pkt need writable\n",
+                            __func__, pkt->print(), (uint64_t)pkt);
                     pkt->setCacheResponding();
                     blk->clearCoherenceBits(CacheBlk::DirtyBit);
                 }
@@ -125,6 +119,8 @@ Cache::satisfyRequest(PacketPtr pkt, CacheBlk *blk,
                     if (!deferred_response) {
                         // respond with the line in Modified state
                         // (cacheResponding set, hasSharers not set)
+                        DPRINTF(CacheVerbose, "%s set packet %s (%#lx) as cache responding, when blk is dirty 2\n",
+                                __func__, pkt->print(), (uint64_t)pkt);
                         pkt->setCacheResponding();
 
                         // if this cache is mostly inclusive, we
@@ -319,14 +315,14 @@ Cache::promoteWholeLineWrites(PacketPtr pkt)
 }
 
 void
-Cache::handleTimingReqHit(PacketPtr pkt, CacheBlk *blk, Tick request_time)
+Cache::handleTimingReqHit(PacketPtr pkt, CacheBlk *blk, Tick request_time, bool first_acc_after_pf)
 {
     // should never be satisfying an uncacheable access as we
     // flush and invalidate any existing block as part of the
     // lookup
     assert(!pkt->req->isUncacheable());
 
-    BaseCache::handleTimingReqHit(pkt, blk, request_time);
+    BaseCache::handleTimingReqHit(pkt, blk, request_time, first_acc_after_pf);
 }
 
 void
@@ -344,16 +340,6 @@ Cache::handleTimingReqMiss(PacketPtr pkt, CacheBlk *blk, Tick forward_time,
         assert(!blk || !blk->isValid());
 
         stats.cmdStats(pkt).mshrUncacheable[pkt->req->requestorId()]++;
-
-        if (pkt->req->hasPC()) {
-            Addr req_pc = pkt->req->getPC();
-            for (int i = 0; i < stats_pc_list.size(); i++) {
-                if (req_pc == stats_pc_list[i]) {
-                    stats.cmdStats(pkt).mshrUncacheablePerPC[i]++;
-                    break;
-                }
-            }
-        }
 
         if (pkt->isWrite()) {
             allocateWriteBuffer(pkt, forward_time);
@@ -469,6 +455,8 @@ Cache::recvTimingReq(PacketPtr pkt)
         // copy (Modified or Owned) that will supply the right
         // data
         snoop_pkt->setExpressSnoop();
+        DPRINTF(CacheVerbose, "%s set packet %s (%#lx) as cache responding, when cache above responding\n", __func__,
+                snoop_pkt->print(), (uint64_t)snoop_pkt);
         snoop_pkt->setCacheResponding();
 
         // this express snoop travels towards the memory, and at
@@ -501,7 +489,6 @@ Cache::createMissPacket(PacketPtr cpu_pkt, CacheBlk *blk,
                         bool is_whole_line_write) const
 {
     // should never see evictions here
-    // 这里不应该出现驱逐操作
     assert(!cpu_pkt->isEviction());
 
     bool blkValid = blk && blk->isValid();
@@ -511,7 +498,6 @@ Cache::createMissPacket(PacketPtr cpu_pkt, CacheBlk *blk,
         cpu_pkt->cmd == MemCmd::InvalidateReq || cpu_pkt->isClean()) {
         // uncacheable requests and upgrades from upper-level caches
         // that missed completely just go through as is
-        // 不可缓存的请求以及来自上层缓存的完全未命中的升级请求，直接原样通过
         return nullptr;
     }
 
@@ -522,9 +508,6 @@ Cache::createMissPacket(PacketPtr cpu_pkt, CacheBlk *blk,
     // Note that ownership protocols require upgrade, otherwise a
     // write miss on a shared owned block will generate a ReadExcl,
     // which will clobber the owned copy.
-    // @TODO 将 useUpgrades 设置为一个参数。
-    // 注意，所有权协议要求使用升级操作，否则在共享已拥有的块上发生的写缺失将生成一个 ReadExcl，
-    // 这将覆盖已有的已拥有副本。
     const bool useUpgrades = true;
     assert(cpu_pkt->cmd != MemCmd::WriteLineReq || is_whole_line_write);
     if (is_whole_line_write) {
@@ -532,24 +515,19 @@ Cache::createMissPacket(PacketPtr cpu_pkt, CacheBlk *blk,
         // forward as invalidate to all other caches, this gives us
         // the line in Exclusive state, and invalidates all other
         // copies
-        // 作为无效化请求转发到所有其他缓存，这使得该行处于独占状态，并使所有其他副本无效
         cmd = MemCmd::InvalidateReq;
     } else if (blkValid && useUpgrades) {
         // only reason to be here is that blk is read only and we need
         // it to be writable
-        // 唯一的原因是 blk 现在是只读的，我们需要将其设为可写
         assert(needsWritable);
         assert(!blk->isSet(CacheBlk::WritableBit));
         cmd = cpu_pkt->isLLSC() ? MemCmd::SCUpgradeReq : MemCmd::UpgradeReq;
     } else if (cpu_pkt->cmd == MemCmd::SCUpgradeFailReq ||
-                cpu_pkt->cmd == MemCmd::StoreCondFailReq) {
+               cpu_pkt->cmd == MemCmd::StoreCondFailReq) {
         // Even though this SC will fail, we still need to send out the
         // request and get the data to supply it to other snoopers in the case
         // where the determination the StoreCond fails is delayed due to
         // all caches not being on the same local bus.
-        // 即使这个 SC（存储条件）操作会失败，我们仍然需要发出请求并获取数据，
-        // 以便在由于所有缓存不在同一个本地总线而导致存储条件失败的判定被延迟的情况下，将数据提供给其他监听器。
-
         cmd = MemCmd::SCUpgradeFailReq;
     } else {
         // block is invalid
@@ -562,12 +540,6 @@ Cache::createMissPacket(PacketPtr cpu_pkt, CacheBlk *blk,
         // * this cache is mostly exclusive and will not fill (since
         //   it does not fill it will have to writeback the dirty data
         //   immediately which generates uneccesary writebacks).
-        // 块是无效的
-
-        // 如果请求不需要可写状态，有两种情况我们需要确保响应不会将块获取为脏状态：
-        // * 该缓存是只读的，并且不会执行写回操作，
-        // * 该缓存主要是独占模式的，并且不会填充（由于不填充，它将不得不立即写回脏数据，这会生成不必要的写回操作）。
-
         bool force_clean_rsp = isReadOnly || clusivity == enums::mostly_excl;
         cmd = needsWritable ? MemCmd::ReadExReq :
             (force_clean_rsp ? MemCmd::ReadCleanReq : MemCmd::ReadSharedReq);
@@ -577,20 +549,17 @@ Cache::createMissPacket(PacketPtr cpu_pkt, CacheBlk *blk,
     // if there are upstream caches that have already marked the
     // packet as having sharers (not passing writable), pass that info
     // downstream
-    // 如果上游缓存已经标记数据包为具有共享者（不传递可写权限），将该信息传递到下游
     if (cpu_pkt->hasSharers() && !needsWritable) {
         // note that cpu_pkt may have spent a considerable time in the
         // MSHR queue and that the information could possibly be out
         // of date, however, there is no harm in conservatively
         // assuming the block has sharers
-        // 请注意，cpu_pkt 可能在 MSHR 队列中停留了相当长的时间，信息可能已经过时，然而，保守地假设该块有共享者不会有任何坏处
         pkt->setHasSharers();
         DPRINTF(Cache, "%s: passing hasSharers from %s to %s\n",
                 __func__, cpu_pkt->print(), pkt->print());
     }
 
     // the packet should be block aligned
-    // 数据包应与块对齐
     assert(pkt->getAddr() == pkt->getBlockAddr(blkSize));
 
     pkt->allocate();
@@ -602,11 +571,10 @@ Cache::createMissPacket(PacketPtr cpu_pkt, CacheBlk *blk,
 
 Cycles
 Cache::handleAtomicReqMiss(PacketPtr pkt, CacheBlk *&blk,
-                        PacketList &writebacks)
+                           PacketList &writebacks)
 {
     // deal with the packets that go through the write path of
     // the cache, i.e. any evictions and writes
-    // 处理通过缓存写路径的数据包，即任何驱逐操作和写入操作
     if (pkt->isEviction() || pkt->cmd == MemCmd::WriteClean ||
         (pkt->req->isUncacheable() && pkt->isWrite())) {
         Cycles latency = ticksToCycles(memSidePort.sendAtomic(pkt));
@@ -614,9 +582,8 @@ Cache::handleAtomicReqMiss(PacketPtr pkt, CacheBlk *&blk,
         // at this point, if the request was an uncacheable write
         // request, it has been satisfied by a memory below and the
         // packet carries the response back
-        // 此时，如果请求是一个不可缓存的写请求，它已经由下层内存处理完毕，并且数据包携带着响应返回
         assert(!(pkt->req->isUncacheable() && pkt->isWrite()) ||
-            pkt->isResponse());
+               pkt->isResponse());
 
         return latency;
     }
@@ -624,15 +591,13 @@ Cache::handleAtomicReqMiss(PacketPtr pkt, CacheBlk *&blk,
     // only misses left
 
     PacketPtr bus_pkt = createMissPacket(pkt, blk, pkt->needsWritable(),
-                                        pkt->isWholeLineWrite(blkSize));
+                                         pkt->isWholeLineWrite(blkSize));
 
     bool is_forward = (bus_pkt == nullptr);
 
     if (is_forward) {
         // just forwarding the same request to the next level
         // no local cache operation involved
-        // 只是将相同的请求转发到下一级
-        // 不涉及本地缓存操作
         bus_pkt = pkt;
     }
 
@@ -646,7 +611,6 @@ Cache::handleAtomicReqMiss(PacketPtr pkt, CacheBlk *&blk,
     bool is_invalidate = bus_pkt->isInvalidate();
 
     // We are now dealing with the response handling
-    // 我们现在正在处理响应处理
     DPRINTF(Cache, "%s: Receive response: %s for %s\n", __func__,
             bus_pkt->print(), old_state);
 
@@ -654,9 +618,6 @@ Cache::handleAtomicReqMiss(PacketPtr pkt, CacheBlk *&blk,
     // in place in the bus_pkt == pkt structure, so we don't need
     // to do anything.  Otherwise, use the separate bus_pkt to
     // generate response to pkt and then delete it.
-    // 如果数据包是转发的，响应（如果有）已经存在于 bus_pkt == pkt 结构中，所以我们不需要做任何操作。
-    // 否则，使用单独的 bus_pkt 生成对 pkt 的响应，然后删除它。
-
     if (!is_forward) {
         if (pkt->needsResponse()) {
             assert(bus_pkt->isResponse());
@@ -665,10 +626,9 @@ Cache::handleAtomicReqMiss(PacketPtr pkt, CacheBlk *&blk,
                 pkt->copyError(bus_pkt);
             } else if (pkt->isWholeLineWrite(blkSize)) {
                 // note the use of pkt, not bus_pkt here.
-                // 注意这里使用的是 pkt，而不是 bus_pkt。
+
                 // write-line request to the cache that promoted
                 // the write to a whole line
-                // 向缓存发出的写行请求提升了写操作的级别，使其覆盖整行数据
                 const bool allocate = allocOnFill(pkt->cmd) &&
                     (!writeAllocator || writeAllocator->allocate());
                 blk = handleFill(bus_pkt, blk, writebacks, allocate);
@@ -676,19 +636,16 @@ Cache::handleAtomicReqMiss(PacketPtr pkt, CacheBlk *&blk,
                 is_invalidate = false;
                 satisfyRequest(pkt, blk);
             } else if (bus_pkt->isRead() ||
-                        bus_pkt->cmd == MemCmd::UpgradeResp) {
+                       bus_pkt->cmd == MemCmd::UpgradeResp) {
                 // we're updating cache state to allow us to
                 // satisfy the upstream request from the cache
-                // 我们正在更新缓存状态，以便能够从缓存中满足上游请求
                 blk = handleFill(bus_pkt, blk, writebacks,
-                                    allocOnFill(pkt->cmd));
+                                 allocOnFill(pkt->cmd));
                 satisfyRequest(pkt, blk);
                 maintainClusivity(pkt->fromCache(), blk);
             } else {
                 // we're satisfying the upstream request without
                 // modifying cache state, e.g., a write-through
-                // 我们在不修改缓存状态的情况下满足上游请求，例如，直写缓存（write-through）
-                // ppFill->notify(pkt);//xymc
                 pkt->makeAtomicResponse();
             }
         }
@@ -748,7 +705,6 @@ Cache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt, CacheBlk *blk)
 
     bool from_core = false;
     bool from_pref = false;
-    bool fill_prefetch = false;
 
     if (pkt->cmd == MemCmd::LockedRMWWriteResp) {
         // This is the fake response generated by the write half of the RMW;
@@ -759,9 +715,6 @@ Cache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt, CacheBlk *blk)
         // response in extractServiceableTargets. In either case, we
         // don't need to respond now, so pop it off to prevent the loop
         // below from generating another response.
-        // 这是由写入一半的RMW生成的假响应；详见recvTimingReq()中的注释。列表中的第一个目标应该是已经被满足的LockedRMWReadReq，
-        // 无论是因为它是一个命中（在recvTimingReq()中分配了MSHR）还是因为在最初的响应后留在那里（在extractServiceableTargets中）。
-        // 在这两种情况下，我们现在不需要再回应，所以将其弹出来以防止下面的循环生成另一个响应。
         assert(initial_tgt->pkt->cmd == MemCmd::LockedRMWReadReq);
         mshr->popTarget();
         delete initial_tgt->pkt;
@@ -772,13 +725,12 @@ Cache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt, CacheBlk *blk)
     for (auto &target: targets) {
         Packet *tgt_pkt = target.pkt;
         switch (target.source) {
-            case MSHR::Target::FromCPU:
+          case MSHR::Target::FromCPU:
             from_core = true;
 
             Tick completion_time;
             // Here we charge on completion_time the delay of the xbar if the
             // packet comes from it, charged on headerDelay.
-            // 在这里，如果数据包来自xbar，我们将把xbar的延迟计入completion_time，并累加到headerDelay上。
             completion_time = pkt->headerDelay;
 
             // Software prefetch handling for cache closest to core
@@ -802,14 +754,6 @@ Cache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt, CacheBlk *blk)
                     // To avoid deadlocks in cases where there is a snoop
                     // between the PrefetchExReq and the expected WriteReq, we
                     // proactively mark the block as Dirty.
-                    // 所有其他块的副本都被作废了，我们现在拥有一个独占的副本。
-// 一致性协议假定，如果我们获取了一个独占的块副本，我们的意图是修改它。
-// 因此，PrefetchExReq 的 MSHR（内存子系统寄存器）成为了排序的点，而这个缓存已经承诺会响应针对该块的监听请求。
-//
-// 在大多数情况下，这确实是事实——一个 PrefetchExReq 通常会跟着一个 WriteReq。
-// 然而，如果这种情况没有发生，块不会被标记为脏数据，并且缓存也不会响应那些它已经承诺要响应的监听请求。
-//
-// 为了避免在 PrefetchExReq 和 预期的 WriteReq 之间出现监听请求时造成死锁，我们主动将块标记为脏数据。
                     assert(blk);
                     blk->setCoherenceBits(CacheBlk::DirtyBit);
 
@@ -821,8 +765,6 @@ Cache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt, CacheBlk *blk)
                 // immediately with dummy data so the core would be able to
                 // retire it. This request completes right here, so we
                 // deallocate it.
-                // 一个软件预取（software prefetch）应该已经被用虚拟数据立即确认了，以便核心能够完成（retire）它。
-                // 这个请求在这里完成，所以我们释放它。
                 delete tgt_pkt;
                 break; // skip response
             }
@@ -833,9 +775,6 @@ Cache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt, CacheBlk *blk)
             // cannot actually be determined until examining the stored MSHR
             // state. We "catch up" with that logic here, which is duplicated
             // from above.
-            // 与其他数据包流不同，在其他数据包流中，数据可能存在于其他缓存或内存中并被带回；
-            // 写入行（write-line）请求总是立即拥有数据，因此上面的“是否填充？”检查实际上需要查看存储的MSHR状态才能确定。
-            // 我们在那里复制了上面的逻辑以跟上这一处理流程。
             if (tgt_pkt->cmd == MemCmd::WriteLineReq) {
                 assert(!is_error);
                 assert(blk);
@@ -848,8 +787,6 @@ Cache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt, CacheBlk *blk)
             // present and valid and in addition the response in not
             // forwarding data to the cache above (we didn't fill
             // either); otherwise we use the packet data.
-            // 在这里我们决定是使用块中的数据还是响应中的数据来满足目标。
-            // 当块存在且有效，并且响应没有将数据转发给上方的缓存（我们也没有填充）时，我们使用块中的数据来满足请求；否则我们使用响应中的数据。
             if (blk && blk->isValid() &&
                 (!mshr->isForward || !pkt->hasData())) {
                 satisfyRequest(tgt_pkt, blk, true, mshr->hasPostDowngrade());
@@ -865,8 +802,6 @@ Cache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt, CacheBlk *blk)
                 // responseLatency is the latency of the return path
                 // from lower level caches/memory to an upper level cache or
                 // the core.
-                // 如果不是关键字（偏移量），则返回 payloadDelay。
-                // responseLatency 是从较低级别的缓存/内存返回到较高级别缓存或核心的路径延迟。
                 completion_time += clockEdge(responseLatency) +
                     (transfer_offset ? pkt->payloadDelay : 0);
 
@@ -876,6 +811,8 @@ Cache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt, CacheBlk *blk)
                 stats.cmdStats(tgt_pkt)
                     .missLatency[tgt_pkt->req->requestorId()] +=
                     completion_time - target.recvTime;
+                stats.cmdStats(tgt_pkt)
+                    .missLatencyDist.sample((completion_time - target.recvTime)/500);
 
                 if (tgt_pkt->cmd == MemCmd::LockedRMWReadReq) {
                     // We're going to leave a target in the MSHR until the
@@ -884,27 +821,21 @@ Cache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt, CacheBlk *blk)
                     // request packet (which has the allocated data pointer)
                     // to form the response, we have to allocate a new dummy
                     // packet to save in the MSHR target.
-                    // 我们将会在 MSHR 中保留一个目标，直到 RMW（读修改写）的写入部分发生（参见上面 recvTimingReq() 中的注释）。
-                    // 由于我们将使用当前的请求数据包（其中包含了分配的数据指针）来形成响应，
-                    // 我们必须分配一个新的虚拟数据包来保存在 MSHR 目标中。
                     mshr->updateLockedRMWReadTarget(tgt_pkt);
                     // skip the rest of target processing after we
                     // send the response
                     // Mark block inaccessible until write arrives
-                    // 在发送响应后跳过剩余的目标处理
-                    // 标记块为不可访问，直到写入操作到达
                     blk->clearCoherenceBits(CacheBlk::WritableBit);
                     blk->clearCoherenceBits(CacheBlk::ReadableBit);
                 }
             } else if (pkt->cmd == MemCmd::UpgradeFailResp) {
                 // failed StoreCond upgrade
                 assert(tgt_pkt->cmd == MemCmd::StoreCondReq ||
-                        tgt_pkt->cmd == MemCmd::StoreCondFailReq ||
-                        tgt_pkt->cmd == MemCmd::SCUpgradeFailReq);
+                       tgt_pkt->cmd == MemCmd::StoreCondFailReq ||
+                       tgt_pkt->cmd == MemCmd::SCUpgradeFailReq);
                 // responseLatency is the latency of the return path
                 // from lower level caches/memory to an upper level cache or
                 // the core.
-                // responseLatency 是从较低级别的缓存/内存返回到较高级别缓存或核心的路径延迟。
                 completion_time += clockEdge(responseLatency) +
                     pkt->payloadDelay;
                 tgt_pkt->req->setExtraData(0);
@@ -968,19 +899,19 @@ Cache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt, CacheBlk *blk)
             }
             // Reset the bus additional time as it is now accounted for
             tgt_pkt->headerDelay = tgt_pkt->payloadDelay = 0;
+            DPRINTF(Cache, "Scheduling %#lx to response to sender %#lx at tick %lu\n",
+                    tgt_pkt->getAddr(), tgt_pkt->senderState, completion_time);
             cpuSidePort.schedTimingResp(tgt_pkt, completion_time);
             break;
 
-            case MSHR::Target::FromPrefetcher:
+          case MSHR::Target::FromPrefetcher:
             assert(tgt_pkt->cmd == MemCmd::HardPFReq);
             from_pref = true;
-
-            fill_prefetch = tgt_pkt->fill_prefetch;
 
             delete tgt_pkt;
             break;
 
-            case MSHR::Target::FromSnoop:
+          case MSHR::Target::FromSnoop:
             // I don't believe that a snoop can be in an error state
             assert(!is_error);
             // response to snoop request
@@ -995,35 +926,20 @@ Cache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt, CacheBlk *blk)
             // the snooping target will snoop further the cache above with the
             // WriteLineReq.
             assert(!is_invalidate || pkt->cmd == MemCmd::InvalidateResp ||
-                    pkt->req->isCacheMaintenance() ||
-                    mshr->hasPostInvalidate());
-            handleSnoop(tgt_pkt, blk, true, true, mshr->hasPostInvalidate());
+                   pkt->req->isCacheMaintenance() ||
+                   mshr->hasPostInvalidate());
+            handleSnoop(tgt_pkt, blk, true, true, mshr->hasPostInvalidate(), mshr);
             break;
 
-            default:
+          default:
             panic("Illegal target->source enum %d\n", target.source);
         }
     }
 
     if (blk && !from_core && from_pref) {
         blk->setPrefetched();
-        blk->setPrefetchedAllocate();
-        stats.prefetchFills++;
-
-    }
-
-    if (fill_prefetch) {//调用notifyFill
-        DPRINTF(HWPrefetch, "ppFill cache: PC %llx, PAddr %llx\n", 
-                    pkt->req->getPC(), pkt->req->getPaddr());
-        ppFill->notify(pkt);
-    }
-    
-    // if (from_pref) {
-    //     ppFill->notify(pkt);
-    // }
-
-    if (blk && pkt->req->hasPC()) {
-        blk->setPC(pkt->req->getPC());
+        blk->setXsMetadata(pkt->req->getXsMetadata());
+        DPRINTF(Cache, "Marking block as prefetched from prefetcher %i\n", blk->getXsMetadata().prefetchSource);
     }
 
     if (!mshr->hasLockedRMWReadTarget()) {
@@ -1067,6 +983,7 @@ Cache::cleanEvictBlk(CacheBlk *blk)
         req->setFlags(Request::SECURE);
 
     req->taskId(blk->getTaskId());
+    req->setXsMetadata(blk->getXsMetadata());
 
     PacketPtr pkt = new Packet(req, MemCmd::CleanEvict);
     pkt->allocate();
@@ -1093,17 +1010,27 @@ Cache::doTimingSupplyResponse(PacketPtr req_pkt, const uint8_t *blk_data,
     // timing-mode snoop responses require a new packet, unless we
     // already made a copy...
     PacketPtr pkt = req_pkt;
-    if (!already_copied)
+    if (!already_copied) {
         // do not clear flags, and allocate space for data if the
         // packet needs it (the only packets that carry data are read
         // responses)
+        DPRINTF(Cache, "%s: copied: %i, creating new packet for snoop response\n",
+                __func__, already_copied);
         pkt = new Packet(req_pkt, false, req_pkt->isRead());
+    }
 
     assert(req_pkt->req->isUncacheable() || req_pkt->isInvalidate() ||
            pkt->hasSharers());
     pkt->makeTimingResponse();
     if (pkt->isRead()) {
+        DPRINTF(Cache, "%s: pkt static data: %i, dyn data: %i\n", __func__, pkt->flags.isSet(Packet::STATIC_DATA),
+                pkt->flags.isSet(Packet::DYNAMIC_DATA));
         pkt->setDataFromBlock(blk_data, blkSize);
+        DPRINTF(CacheVerbose, "Responsing data:\n");
+        for (int i = 0; i < blkSize; i++) {
+            DPRINTFR(CacheVerbose, "%02x ", blk_data[i]);
+        }
+        DPRINTFR(CacheVerbose, "\n");
     }
     if (pkt->cmd == MemCmd::ReadResp && pending_inval) {
         // Assume we defer a response to a read from a far-away cache
@@ -1128,9 +1055,9 @@ Cache::doTimingSupplyResponse(PacketPtr req_pkt, const uint8_t *blk_data,
 
 uint32_t
 Cache::handleSnoop(PacketPtr pkt, CacheBlk *blk, bool is_timing,
-                   bool is_deferred, bool pending_inval)
+                   bool is_deferred, bool pending_inval, MSHR *deferring_mshr)
 {
-    DPRINTF(CacheVerbose, "%s: for %s\n", __func__, pkt->print());
+    DPRINTF(CacheVerbose, "%s: for %s, deferred: %i\n", __func__, pkt->print(), is_deferred);
     // deferred snoops can only happen in timing mode
     assert(!(is_deferred && !is_timing));
     // pending_inval only makes sense on deferred snoops
@@ -1201,6 +1128,7 @@ Cache::handleSnoop(PacketPtr pkt, CacheBlk *blk, bool is_timing,
 
     bool respond = false;
     bool blk_valid = blk && blk->isValid();
+    DPRINTF(Cache, "pkt %s is clean: %i\n", pkt->print(), pkt->isClean());
     if (pkt->isClean()) {
         if (blk_valid && blk->isSet(CacheBlk::DirtyBit)) {
             DPRINTF(CacheVerbose, "%s: packet (snoop) %s found block: %s\n",
@@ -1248,7 +1176,17 @@ Cache::handleSnoop(PacketPtr pkt, CacheBlk *blk, bool is_timing,
         // invalidation itself is taken care of below. We don't respond to
         // cache maintenance operations as this is done by the destination
         // xbar.
-        respond = blk->isSet(CacheBlk::DirtyBit) && pkt->needsResponse();
+        respond = pkt->needsResponse() && blk->isSet(CacheBlk::DirtyBit);
+
+        // print conditions below
+        DPRINTF(Cache, "%s: need response: %i, cache responding: %i, deferring mshr: %lx, responding by: %lx\n",
+                __func__, pkt->needsResponse(), pkt->cacheResponding(), (uint64_t)deferring_mshr,
+                (uint64_t)pkt->getCacheRespondingBy());
+        if (pkt->needsResponse() && deferring_mshr && (uint64_t)deferring_mshr == pkt->getCacheRespondingBy()) {
+            respond = true;
+            DPRINTF(Cache, "%s: respond because mshr %lx has promised to respond\n", __func__,
+                    (uint64_t)deferring_mshr);
+        }
 
         gem5_assert(!(isReadOnly && blk->isSet(CacheBlk::DirtyBit)),
             "Should never have a dirty block in a read-only cache %s\n",
@@ -1286,6 +1224,8 @@ Cache::handleSnoop(PacketPtr pkt, CacheBlk *blk, bool is_timing,
         // prevent anyone else from responding, cache as well as
         // memory, and also prevent any memory from even seeing the
         // request
+        DPRINTF(CacheVerbose, "%s set packet %s (%#lx) as cache responding, because pkt needs and blk is dirty\n",
+                __func__, pkt->print(), (uint64_t)pkt);
         pkt->setCacheResponding();
         if (!pkt->isClean() && blk->isSet(CacheBlk::WritableBit)) {
             // inform the cache hierarchy that this cache had the line
@@ -1310,6 +1250,7 @@ Cache::handleSnoop(PacketPtr pkt, CacheBlk *blk, bool is_timing,
                  "but keeping the block", name(), pkt->print());
 
         if (is_timing) {
+            DPRINTF(Cache, "Doing time supply, is_deferred: %i, pending inval: %i\n", is_deferred, pending_inval);
             doTimingSupplyResponse(pkt, blk->data, is_deferred, pending_inval);
         } else {
             pkt->makeAtomicResponse();
@@ -1429,6 +1370,8 @@ Cache::recvTimingSnoopReq(PacketPtr pkt)
         }
 
         if (respond) {
+            DPRINTF(CacheVerbose, "%s set packet %s (%#lx) as cache responding, when dirty blk found in wb entry\n",
+                    __func__, pkt->print(), (uint64_t) pkt);
             pkt->setCacheResponding();
 
             if (have_writable) {
@@ -1452,7 +1395,7 @@ Cache::recvTimingSnoopReq(PacketPtr pkt)
     // We could be more selective and return here if the
     // request is non-exclusive or if the writeback is
     // exclusive.
-    uint32_t snoop_delay = handleSnoop(pkt, blk, true, false, false);
+    uint32_t snoop_delay = handleSnoop(pkt, blk, true, false, false, nullptr);
 
     // Override what we did when we first saw the snoop, as we now
     // also have the cost of the upwards snoops to account for
@@ -1469,7 +1412,7 @@ Cache::recvAtomicSnoop(PacketPtr pkt)
     }
 
     CacheBlk *blk = tags->findBlock(pkt->getAddr(), pkt->isSecure());
-    uint32_t snoop_delay = handleSnoop(pkt, blk, false, false, false);
+    uint32_t snoop_delay = handleSnoop(pkt, blk, false, false, false, nullptr);
     return snoop_delay + lookupLatency * clockPeriod();
 }
 

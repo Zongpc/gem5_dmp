@@ -96,7 +96,8 @@ Commit::Commit(CPU *_cpu, const BaseO3CPUParams &params)
       trapLatency(params.trapLatency),
       canHandleInterrupts(true),
       avoidQuiesceLiveLock(false),
-      stats(_cpu, this)
+      stats(_cpu, this),
+      archDBer(params.arch_db)
 {
     if (commitWidth > MaxWidth)
         fatal("commitWidth (%d) is larger than compiled limit (%d),\n"
@@ -1281,6 +1282,9 @@ Commit::commitHead(const DynInstPtr &head_inst, unsigned inst_num)
 
     updateComInstStats(head_inst);
 
+    if (archDBer && head_inst->isMemRef())
+        dumpTicks(head_inst);
+    lastCommitTick = curTick();
     DPRINTF(Commit,
             "[tid:%i] [sn:%llu] Committing instruction with PC %s\n",
             tid, head_inst->seqNum, head_inst->pcState());
@@ -1536,5 +1540,12 @@ Commit::oldestReady()
     }
 }
 
+void
+Commit::dumpTicks(const DynInstPtr &inst)
+{
+    assert(archDBer);
+    archDBer->memTraceWrite(curTick(), inst->isLoad(), inst->pcState().instAddr(), inst->effAddr, inst->physEffAddr,
+                            inst->firstIssue, inst->translatedTick, inst->completionTick, curTick(), 0, inst->pf_source);
+}
 } // namespace o3
 } // namespace gem5

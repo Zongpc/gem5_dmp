@@ -1,390 +1,335 @@
-/*
- * Copyright (c) 2023 XJTU
- * Copyright (c) 2012-2013, 2015 ARM Limited
- * All rights reserved
- *
- * The license below extends only to copyright in the software and shall
- * not be construed as granting a license to any other intellectual
- * property including but not limited to intellectual property relating
- * to a hardware implementation of the functionality of the software
- * licensed hereunder.  You may use the software subject to the license
- * terms below provided that you ensure that this notice is replicated
- * unmodified and in its entirety in all distributions of the software,
- * modified or unmodified, in source code or in binary form.
- *
- * Copyright (c) 2005 The Regents of The University of Michigan
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met: redistributions of source code must retain the above copyright
- * notice, this list of conditions and the following disclaimer;
- * redistributions in binary form must reproduce the above copyright
- * notice, this list of conditions and the following disclaimer in the
- * documentation and/or other materials provided with the distribution;
- * neither the name of the copyright holders nor the names of its
- * contributors may be used to endorse or promote products derived from
- * this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
-
-/**
- * @file
- * Stride Prefetcher template instantiations.
- */
+//
+// Created by linjiawei on 22-10-31.
+//
 
 #include "mem/cache/prefetch/berti.hh"
 
-#include <cassert>
-
-#include "base/intmath.hh"
-#include "base/logging.hh"
-#include "base/random.hh"
-#include "base/trace.hh"
-#include "debug/HWPrefetch.hh"
+#include "base/output.hh"
+#include "debug/BertiPrefetcher.hh"
+#include "mem/cache/base.hh"
 #include "mem/cache/prefetch/associative_set_impl.hh"
-#include "mem/cache/replacement_policies/base.hh"
-#include "params/BertiPrefetcher.hh"
 
 namespace gem5
 {
+namespace prefetch
+{
 
-    GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
-    namespace prefetch
-    {
+BertiPrefetcher::BertiStats::BertiStats(statistics::Group *parent)
+    : statistics::Group(parent),
+      ADD_STAT(trainOnHit, statistics::units::Count::get(), "Count of train on hit"),
+      ADD_STAT(trainOnMiss, statistics::units::Count::get(), "Count of train on miss"),
+      ADD_STAT(notifySkippedCond1, statistics::units::Count::get(), "Count of notify skipped on mixed condition"),
+      ADD_STAT(notifySkippedIsPF, statistics::units::Count::get(), "Count of notify skipped isPF"),
+      ADD_STAT(notifySkippedNoEntry, statistics::units::Count::get(), "Count of notify skipped no Berti entry"),
+      ADD_STAT(entryEvicts, statistics::units::Count::get(), "Count of Berti entry evicted")
+{
+}
 
-        Berti::HistoryEntry::HistoryEntry()
-            : TaggedEntry()
-        {
-            invalidate();
-        }
-
-        void
-        Berti::HistoryEntry::invalidate()
-        {
-            TaggedEntry::invalidate();
-            history_set_num = 0;
-            for (int i = 0; i < 16; i++)
-            {
-                history_sets[i].line_address = 0;
-                history_sets[i].timestamp = 0;
+BertiPrefetcher::BertiPrefetcher(const BertiPrefetcherParams &p)
+    : Queued(p),
+      maxAddrListSize(p.addrlist_size),
+      maxDeltaListSize(p.deltalist_size),
+      maxDeltafound(p.max_deltafound),
+      historyTable(p.history_table_assoc, p.history_table_entries,
+                   p.history_table_indexing_policy,
+                   p.history_table_replacement_policy,
+                   HistoryTableEntry(maxDeltaListSize)),
+      aggressivePF(p.aggressive_pf),
+      useByteAddr(p.use_byte_addr),
+      triggerPht(p.trigger_pht),
+      statsBerti(this),
+      trainBlockFilter(8),
+      dumpTopDeltas(p.dump_top_deltas)
+{
+    registerExitCallback([this]() {
+        if (this->dumpTopDeltas) {
+            std::vector<std::pair<int64_t, uint64_t>> top_delta_vec;
+            for (const auto &entry: topDeltas) {
+                top_delta_vec.push_back(entry);
             }
-        }
+            std::sort(top_delta_vec.begin(), top_delta_vec.end(),
+                      [](const std::pair<int64_t, uint64_t> &a, const std::pair<int64_t, uint64_t> &b) {
+                          return a.second > b.second;
+                      });
 
-        Berti::DeltaEntry::DeltaEntry()
-            : TaggedEntry()
-        {
-            invalidate();
-        }
-
-        void
-        Berti::DeltaEntry::invalidate()
-        {
-            TaggedEntry::invalidate();
-            delta_array_num = 0;
-            access_array_num = 0;
-            counter = 0;
-            for (int i = 0; i < 16; i++)
-            {
-                delta_arrays[i].delta = 0;
-                delta_arrays[i].coverage = 0;
-                delta_arrays[i].status = 0;
-                access_arrays[i].line_address = 0;
-                access_arrays[i].access_tick = 0;
-            }
-        }
-
-        Berti::Berti(const BertiPrefetcherParams &p)
-            : Queued(p),
-              useRequestorId(p.use_requestor_id),
-              degree(p.degree),
-              HistoryTableInfo(p.history_table_assoc, p.history_table_entries, p.history_table_indexing_policy,
-                               p.history_table_replacement_policy),
-              DeltaTableInfo(p.delta_table_assoc, p.delta_table_entries, p.delta_table_indexing_policy,
-                             p.delta_table_replacement_policy)
-        {
-        }
-
-        Berti::HistoryTable *
-        Berti::findHistoryTable(int context)
-        {
-            // Check if table for given context exists
-            auto it = HistoryTables.find(context);
-            if (it != HistoryTables.end())
-                return &it->second;
-
-            // If table does not exist yet, create one
-            return allocateHistoryContext(context);
-        }
-
-        Berti::HistoryTable *
-        Berti::allocateHistoryContext(int context)
-        {
-            // Create new table
-            auto insertion_result = HistoryTables.insert(std::make_pair(context,
-                                                                        HistoryTable(HistoryTableInfo.assoc, HistoryTableInfo.numEntries,
-                                                                                     HistoryTableInfo.indexingPolicy, HistoryTableInfo.replacementPolicy)));
-            // ,HistoryEntry(initConfidence))));
-
-            DPRINTF(HWPrefetch, "Adding context %i with stride entries\n", context);
-
-            // Get iterator to new pc table, and then return a pointer to the new table
-            return &(insertion_result.first->second);
-        }
-
-        Berti::DeltaTable *
-        Berti::findDeltaTable(int context)
-        {
-            // Check if table for given context exists
-            auto it = DeltaTables.find(context);
-            if (it != DeltaTables.end())
-                return &it->second;
-
-            // If table does not exist yet, create one
-            return allocateDeltaContext(context);
-        }
-
-        Berti::DeltaTable *
-        Berti::allocateDeltaContext(int context)
-        {
-            // Create new table
-            auto insertion_result = DeltaTables.insert(std::make_pair(context,
-                                                                      DeltaTable(DeltaTableInfo.assoc, DeltaTableInfo.numEntries,
-                                                                                 DeltaTableInfo.indexingPolicy, DeltaTableInfo.replacementPolicy)));
-            // ,HistoryEntry(initConfidence))));
-
-            DPRINTF(HWPrefetch, "Adding context %i with stride entries\n", context);
-
-            // Get iterator to new pc table, and then return a pointer to the new table
-            return &(insertion_result.first->second);
-        }
-
-        void
-        Berti::calculatePrefetch(const PrefetchInfo &pfi,
-                                 std::vector<AddrPriority> &addresses)
-        {
-            if (!pfi.hasPC())
-            {
-                DPRINTF(HWPrefetch, "Ignoring request with no PC.\n");
-                return;
-            }
-
-            // Get required packet info
-            Addr pf_addr = pfi.getAddr();
-            Addr pc = pfi.getPC();
-            bool is_secure = pfi.isSecure();
-            Tick cur_tick = pfi.getCurTick(); // Tick when insert into MSHR
-            RequestorID requestor_id = useRequestorId ? pfi.getRequestorId() : 0;
-
-            // update History Table when insert MSHR , latency are included using pfi.getCurTick()
-            if (pfi.getInsertMSHR())
-            {
-                // printf("pc : %#x , addr : %#x , get insert MSHR\n", pc, pf_addr);
-                HistoryTable *history_table = findHistoryTable(requestor_id);
-                HistoryEntry *history_entry = history_table->findEntry(pc, is_secure);
-                if (history_entry != nullptr)
-                { // find HistoryEntry
-                    if (history_entry->history_set_num <= 16)
-                    { // berti records 16 ways for the same pc
-                        (history_entry->history_set_num == 16) ?: history_entry->history_set_num++;
-                        for (int i = history_entry->history_set_num - 1; i > 0; i--)
-                        {
-                            history_entry->history_sets[i].line_address =
-                                history_entry->history_sets[i - 1].line_address;
-                            history_entry->history_sets[i].timestamp =
-                                history_entry->history_sets[i - 1].timestamp;
-                        }
-                        history_entry->history_sets[0].line_address = pf_addr;
-                        history_entry->history_sets[0].timestamp = cur_tick;
-                    }
-                    else
-                        history_entry->history_set_num = 0; // exception
-                }
-                else
-                {
-                    HistoryEntry *entry = history_table->findVictim(pc);
-                    // Insert new entry's data
-                    entry->history_sets[0].line_address = pf_addr;
-                    entry->history_sets[0].timestamp = cur_tick;
-                    entry->history_set_num = 1;
-                    history_table->insertEntry(pc, is_secure, entry);
+            auto out_handle = simout.create("topBertiDeltas.txt", false, true);
+            *out_handle->stream() << "Delta" << " " << "count" << std::endl;
+            unsigned count = 0;
+            for (const auto &it: top_delta_vec) {
+                *out_handle->stream() << it.first << " " << it.second << std::endl;
+                count++;
+                if (count >= 1000) {
+                    break;
                 }
             }
 
-            // update Delta Table when there is a cache hit
-            if (pfi.getCacheHit())
-            {
-                // printf("pc : %#x , addr : %#x , get cache hit\n", pc, pf_addr);
-                DeltaTable *delta_table = findDeltaTable(requestorId);
-                DeltaEntry *delta_entry = delta_table->findEntry(pc, is_secure);
-                if (delta_entry != nullptr)
-                {
-                    if (delta_entry->access_array_num <= 16) // record at max 16 access arrays , same as Berti
-                    {
-                        (delta_entry->access_array_num == 16) ?: delta_entry->access_array_num++;
-                        for (int i = delta_entry->access_array_num - 1; i > 0; i--)
-                        {
-                            delta_entry->access_arrays[i].line_address =
-                                delta_entry->access_arrays[i - 1].line_address;
-                            delta_entry->access_arrays[i].access_tick =
-                                delta_entry->access_arrays[i - 1].access_tick;
-                        }
-                        delta_entry->access_arrays[0].line_address = pf_addr;
-                        delta_entry->access_arrays[0].access_tick = curTick();
-                    }
-                    else
-                        delta_entry->access_array_num = 0; // exception
+            simout.close(out_handle);
 
-                    if (delta_entry->delta_array_num < 16) // start computing the coverage of deltas
-                    {
-                        HistoryTable *history_table = findHistoryTable(requestor_id);
-                        HistoryEntry *history_entry = history_table->findEntry(pc, is_secure);
-                        if (history_entry != nullptr)
-                        {
-                            for (int i = 0; i < history_entry->history_set_num; i++)
-                            {
-                                if (history_entry->history_sets[i].line_address == pf_addr)
-                                {
-                                    for (int j = 0; j < delta_entry->access_array_num; j++)
-                                    {
-                                        if (delta_entry->access_arrays[j].access_tick < history_entry->history_sets[i].timestamp)
-                                        {
-                                            int delta = - delta_entry->access_arrays[j].line_address + history_entry->history_sets[i].line_address;
-                                            if (!delta)
-                                                continue;
-                                            for (int k = 0; k < delta_entry->delta_array_num; k++)
-                                            {
-                                                // match in delta_arrays
-                                                if (delta_entry->delta_arrays[k].delta == delta)
-                                                {
-                                                    delta_entry->delta_arrays[k].coverage++;
-                                                    break;
-                                                }
-                                                // not found match in delta_arrays , fill new delta_array
-                                                if (k == delta_entry->delta_array_num - 1)
-                                                {
-                                                    if (delta_entry->delta_array_num < 16)
-                                                    {
-                                                        delta_entry->delta_arrays[delta_entry->delta_array_num].delta = delta;
-                                                        delta_entry->delta_arrays[delta_entry->delta_array_num].coverage++;
-                                                    }
-                                                    // delta_entry full , replace delta_array based on coverage
-                                                    else if (delta_entry->delta_array_num == 16)
-                                                    {
-                                                        // update delta_array both FIFO and < 50% coverage , remember to reset status.
-                                                        for (int l = 0; l < delta_entry->delta_array_num; l++)
-                                                        {
-                                                            if (delta_entry->delta_arrays[l].status > 0)
-                                                                continue;
-                                                            for (int m = l; m < delta_entry->delta_array_num - 1; m++)
-                                                            {
-                                                                delta_entry->delta_arrays[m].coverage = delta_entry->delta_arrays[m + 1].coverage;
-                                                                delta_entry->delta_arrays[m].delta = delta_entry->delta_arrays[m + 1].delta;
-                                                                delta_entry->delta_arrays[m].status = delta_entry->delta_arrays[m + 1].status;
-                                                            }
-                                                            delta_entry->delta_arrays[delta_entry->delta_array_num - 1].coverage = 1;
-                                                            delta_entry->delta_arrays[delta_entry->delta_array_num - 1].delta = delta;
-                                                            delta_entry->delta_arrays[delta_entry->delta_array_num - 1].status = 0;
-                                                            break;
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            (delta_entry->delta_array_num == 16) ?: delta_entry->delta_array_num++;
-                                            delta_entry->counter++;
-                                            // calculate the most possible delta
-                                            if (delta_entry->counter >= 16)
-                                            {
-                                                double sum = 0;
-                                                for (int k = 0; k < delta_entry->delta_array_num; k++)
-                                                {
-                                                    sum += delta_entry->delta_arrays[k].coverage;
-                                                }
-                                                for (int k = 0; k < delta_entry->delta_array_num; k++)
-                                                {
-                                                    double temp = delta_entry->delta_arrays[k].coverage / sum;
-                                                    if (temp > 0.3)
-                                                        delta_entry->delta_arrays[k].status = 1;
-                                                    else if (temp > 0.1)
-                                                        delta_entry->delta_arrays[k].status = 2;
-                                                    else
-                                                        delta_entry->delta_arrays[k].status = 0;
-                                                }
-                                                delta_entry->counter = 0;
-                                            }
-                                        }
-                                    }
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    else
-                        delta_entry->delta_array_num = 0; // exception
-                }
-                else
-                {
-                    DeltaEntry *entry = delta_table->findVictim(pc);
-                    // Insert new entry's data
-                    entry->access_array_num = 1;
-                    entry->access_arrays[0].line_address = pf_addr;
-                    entry->access_arrays[0].access_tick = curTick();
-                    delta_table->insertEntry(pc, is_secure, entry);
-                }
-            }
-            // prefetch generation based on delta entry
-            DeltaTable *delta_table = findDeltaTable(requestorId);
-            DeltaEntry *delta_entry = delta_table->findEntry(pc, is_secure);
-            if (delta_entry != nullptr){
-                for (int i = 0; i < delta_entry->delta_array_num; i++)
-                {
-                    if (delta_entry->delta_arrays[i].status == 1)
-                    {
-                        // for (int d = 1; d <= degree; d++) {
-                        //     // Round strides up to atleast 1 cacheline
-                        //     int prefetch_delta = delta_entry->delta_arrays[i].delta;
-                        //     if (abs(prefetch_delta) < blkSize) {
-                        //         prefetch_delta = (prefetch_delta < 0) ? -blkSize : blkSize;
-                        //     }
-
-                        //     Addr new_addr = pf_addr + d * prefetch_delta;
-                        //     addresses.push_back(AddrPriority(new_addr, 0));
-                        // }
-                        for (int d = 1; d <= degree; d++){
-                            int prefetch_delta = delta_entry->delta_arrays[i].delta;
-                            Addr new_addr = pf_addr + d*prefetch_delta;
-                            addresses.push_back(AddrPriority(new_addr, 0));
-                        }
-                    }
+            out_handle = simout.create("topBertiEvictDeltas.txt", false, true);
+            *out_handle->stream() << "EvcitedDelta" << " " << "count" << std::endl;
+            count = 0;
+            for (const auto &it: evictedDeltas) {
+                *out_handle->stream() << it.first << " " << it.second << std::endl;
+                count++;
+                if (count >= 100) {
+                    break;
                 }
             }
 
+            simout.close(out_handle);
+        }
+    });
+}
+
+BertiPrefetcher::HistoryTableEntry*
+BertiPrefetcher::updateHistoryTable(const PrefetchInfo &pfi)
+{
+    Addr training_addr = useByteAddr ? pfi.getAddr() : blockIndex(pfi.getAddr());
+    HistoryTableEntry *entry =
+        historyTable.findEntry(pcHash(pfi.getPC()), pfi.isSecure());
+    HistoryInfo new_info = {
+        .vAddr = training_addr,
+        .timestamp = curCycle()
+    };
+
+    if (entry) {
+        historyTable.accessEntry(entry);
+        DPRINTF(BertiPrefetcher, "PC=%lx, history table hit, Addr=%lx\n", pfi.getPC(), training_addr);
+
+        bool found_addr_in_hist =
+            std::find(entry->history.begin(), entry->history.end(), new_info) != entry->history.end();
+        if (!found_addr_in_hist) {
+            if (entry->history.size() >= maxAddrListSize) {
+                entry->history.erase(entry->history.begin());
+            }
+            entry->history.push_back(new_info);
+            entry->hysteresis = true;
+            return entry;
+        } else {
+            DPRINTF(BertiPrefetcher, "PC=%lx, addr %lx found in history table hit, ignore\n", pfi.getPC(),
+                    training_addr);
+            return nullptr;  // ignore redundant req
+        }
+    } else {
+        DPRINTF(BertiPrefetcher, "PC=%lx, history table miss\n", pfi.getPC());
+        entry = historyTable.findVictim(pcHash(pfi.getPC()));
+        if (entry->hysteresis) {
+            entry->hysteresis = false;
+            historyTable.insertEntry(pcHash(entry->pc), entry->isSecure(), entry, false);
+        } else {
+            if (entry->bestDelta.status != NO_PREF) {
+                int64_t blk_delta =
+                    (int64_t)blockIndex(pfi.getAddr() + entry->bestDelta.delta) - blockIndex(pfi.getAddr());
+                if (!useByteAddr) {
+                    evictedBestDelta = entry->bestDelta.delta;
+                } else {
+                    evictedBestDelta = blk_delta;
+                }
+                statsBerti.entryEvicts++;
+                evictedDeltas[blk_delta] = evictedDeltas.count(blk_delta) ? evictedDeltas[blk_delta] + 1 : 1;
+            }
+            // only when hysteresis is false
+            entry->pc = pfi.getPC();
+            entry->history.clear();
+            entry->history.push_back(new_info);
+            historyTable.insertEntry(pcHash(pfi.getPC()), pfi.isSecure(), entry);
+        }
+    }
+    return nullptr;
+}
+
+
+void BertiPrefetcher::searchTimelyDeltas(
+    HistoryTableEntry &entry,
+    const Cycles &search_latency,
+    const Cycles &demand_cycle,
+    const Addr &trigger_addr)
+{
+    DPRINTF(BertiPrefetcher, "latency: %lu, demand_cycle: %lu, history count: %lu\n", search_latency, demand_cycle,
+            entry.history.size());
+    std::list<int64_t> new_deltas;
+    int delta_thres = useByteAddr ? blkSize : 8;
+    for (auto it = entry.history.rbegin(); it != entry.history.rend(); it++) {
+        int64_t delta = trigger_addr - it->vAddr;
+        DPRINTF(BertiPrefetcher, "delta (%x - %x) = %ld\n", trigger_addr, it->vAddr, delta);
+
+        // skip short deltas
+        if (labs(delta) <= delta_thres) {
+            continue;
         }
 
-        uint32_t
-        BertiPrefetcherHashedSetAssociative::extractSet(const Addr pc) const
-        {
-            const Addr hash1 = pc >> 1;
-            const Addr hash2 = hash1 >> tagShift;
-            return (hash1 ^ hash2) & setMask;
+        // if not timely, skip and continue
+        if (it->timestamp + search_latency >= demand_cycle) {
+            DPRINTF(BertiPrefetcher, "skip untimely delta: %lu + %lu <= %u : %ld\n", it->timestamp, search_latency,
+                    demand_cycle, delta);
+            continue;
         }
-
-        Addr
-        BertiPrefetcherHashedSetAssociative::extractTag(const Addr addr) const
-        {
-            return addr;
+        assert(delta != 0);
+        new_deltas.push_back(delta);
+        DPRINTF(BertiPrefetcher, "Timely delta found: %d=(%x - %x)\n", delta, trigger_addr, it->vAddr);
+        if (new_deltas.size() >= maxDeltafound) {
+            break;
         }
+    }
 
-    } // namespace prefetch
-} // namespace gem5
+    entry.counter++;
+
+    for (auto &delta : new_deltas) {
+        bool miss = true;
+        for (auto &delta_info : entry.deltas) {
+            if (delta_info.coverageCounter != 0 && delta_info.delta == delta) {
+                delta_info.coverageCounter++;
+                DPRINTF(BertiPrefetcher, "Inc coverage for delta %d, cov = %d\n", delta, delta_info.coverageCounter);
+                miss = false;
+                break;
+            }
+        }
+        // miss
+        if (miss) {
+            // find the smallest coverage and replace
+            int replace_idx = 0;
+            for (auto i = 0; i < entry.deltas.size(); i++) {
+                if (entry.deltas[replace_idx].coverageCounter >= entry.deltas[i].coverageCounter) {
+                    replace_idx = i;
+                }
+            }
+            entry.deltas[replace_idx].delta = delta;
+            entry.deltas[replace_idx].coverageCounter = 1;
+            entry.deltas[replace_idx].status = NO_PREF;
+            DPRINTF(BertiPrefetcher, "Add new delta: %d with cov = 1\n", delta);
+        }
+    }
+
+    if (entry.counter >= 6) {
+        entry.updateStatus();
+        if (entry.counter >= 16) {
+            entry.resetConfidence(false);
+        }
+    }
+    printDeltaTableEntry(entry);
+}
+
+void
+BertiPrefetcher::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addresses, bool late,
+                                   PrefetchSourceType pf_source, bool miss_repeat, Addr &local_delta_pf_addr)
+{
+    // reset learned delta
+    evictedBestDelta = 0;
+    lastUsedBestDelta = 0;
+
+    DPRINTF(BertiPrefetcher,
+            "Train prefetcher, pc: %lx, addr: %lx miss: %d last lat: [%d]\n",
+            pfi.getPC(), blockAddress(pfi.getAddr()),
+            pfi.isCacheMiss(), hitSearchLatency);
+
+    trainBlockFilter.insert(blockIndex(pfi.getAddr()), 0);
+
+    if (!pfi.isCacheMiss()) {
+        HistoryTableEntry *hist_entry = historyTable.findEntry(pcHash(pfi.getPC()), pfi.isSecure());
+        if (hist_entry) {
+            searchTimelyDeltas(*hist_entry, hitSearchLatency, curCycle(),
+                               useByteAddr ? pfi.getAddr() : blockIndex(pfi.getAddr()));
+            statsBerti.trainOnHit++;
+        }
+    }
+
+    /** 1.train: update history table and compute learned delta*/
+    auto entry = updateHistoryTable(pfi);
+
+    /** 2.prefetch: search table of deltas, issue prefetch request */
+    if (entry) {
+        DPRINTF(BertiPrefetcher, "Delta table hit, pc: %lx\n", pfi.getPC());
+        if (aggressivePF) {
+            for (auto &delta_info : entry->deltas) {
+                if (delta_info.status != NO_PREF) {
+                    DPRINTF(BertiPrefetcher, "Using delta %d to prefetch\n", delta_info.delta);
+                    int64_t delta = delta_info.delta;
+                    Addr pf_addr =
+                        useByteAddr ? pfi.getAddr() + delta : (blockIndex(pfi.getAddr()) + delta) << lBlkSize;
+                    sendPFWithFilter(pfi, pf_addr, addresses, 32, PrefetchSourceType::Berti,
+                                     delta == entry->bestDelta.delta && entry->bestDelta.coverageCounter >= 8);
+                }
+            }
+        } else {
+            if (entry->bestDelta.status != NO_PREF) {
+                DPRINTF(BertiPrefetcher, "Using best delta %d to prefetch\n", entry->bestDelta.delta);
+                Addr pf_addr = useByteAddr ? pfi.getAddr() + entry->bestDelta.delta
+                                           : (blockIndex(pfi.getAddr()) + entry->bestDelta.delta) << lBlkSize;
+                sendPFWithFilter(pfi, pf_addr, addresses, 32, PrefetchSourceType::Berti,
+                                 entry->bestDelta.coverageCounter >= 8);
+                if (triggerPht && entry->bestDelta.coverageCounter > 5) {
+                    local_delta_pf_addr = pf_addr;
+                }
+            }
+        }
+    }
+}
+
+bool
+BertiPrefetcher::sendPFWithFilter(const PrefetchInfo &pfi, Addr addr, std::vector<AddrPriority> &addresses, int prio,
+                                  PrefetchSourceType src, bool using_best_delta_and_confident)
+{
+    if (archDBer && cache->level() == 1) {
+        archDBer->l1PFTraceWrite(curTick(), pfi.getPC(), pfi.getAddr(), addr, src);
+    }
+    if (using_best_delta_and_confident) {
+        lastUsedBestDelta = blockIndex(addr) - blockIndex(pfi.getAddr());
+    }
+    if (filter->contains(addr)) {
+        DPRINTF(BertiPrefetcher, "Skip recently prefetched: %lx\n", addr);
+        return false;
+    } else {
+        int64_t blk_delta = (int64_t)blockIndex(addr) - blockIndex(pfi.getAddr());
+        topDeltas[blk_delta] = topDeltas.count(blk_delta) ? topDeltas[blk_delta] + 1 : 1;
+        DPRINTF(BertiPrefetcher, "Send pf: %lx\n", addr);
+        filter->insert(addr, 0);
+        addresses.push_back(AddrPriority(addr, prio, src));
+        return true;
+    }
+}
+
+
+void
+BertiPrefetcher::notifyFill(const PacketPtr &pkt)
+{
+    if (pkt->req->isInstFetch() ||
+        !pkt->req->hasVaddr() || !pkt->req->hasPC()) {
+        DPRINTF(BertiPrefetcher, "Skip packet: %s\n", pkt->print());
+        statsBerti.notifySkippedCond1++;
+        return;
+    }
+
+    DPRINTF(BertiPrefetcher,
+            "Cache Fill: %s isPF: %d, pc: %lx\n",
+            pkt->print(), pkt->req->isPrefetch(), pkt->req->getPC());
+
+    if (pkt->req->isPrefetch()) {
+        statsBerti.notifySkippedIsPF++;
+        return;
+    }
+
+    // fill latency
+    Cycles miss_refill_search_lat = Cycles(0);
+    hitSearchLatency = Cycles(0);
+
+    HistoryTableEntry *entry =
+        historyTable.findEntry(pcHash(pkt->req->getPC()), pkt->req->isSecure());
+    if (!entry) {
+        statsBerti.notifySkippedNoEntry++;
+        return;
+    }
+
+    /** Search history table, find deltas. */
+    Cycles demand_cycle = ticksToCycles(pkt->req->time());
+
+    DPRINTF(BertiPrefetcher, "Search delta for PC %lx\n", pkt->req->getPC());
+    searchTimelyDeltas(*entry, miss_refill_search_lat, demand_cycle,
+                       useByteAddr ? pkt->req->getVaddr() : blockIndex(pkt->req->getVaddr()));
+    statsBerti.trainOnMiss++;
+
+    DPRINTF(BertiPrefetcher, "Updating table of deltas, latency [%d]\n",
+            miss_refill_search_lat);
+}
+
+}
+}

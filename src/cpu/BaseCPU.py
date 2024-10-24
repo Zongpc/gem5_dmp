@@ -162,6 +162,7 @@ class BaseCPU(ClockedObject):
     _uncached_interrupt_response_ports = []
     _uncached_interrupt_request_ports = []
 
+    arch_db = Param.ArchDBer(Parent.any, "Arch DB")
     def createInterruptController(self):
         self.interrupts = [
             self.ArchInterrupts() for i in range(self.numThreads)

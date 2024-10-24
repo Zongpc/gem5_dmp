@@ -54,6 +54,7 @@
 #include "cpu/o3/rob.hh"
 #include "cpu/timebuf.hh"
 #include "enums/CommitPolicy.hh"
+#include "sim/arch_db.hh"
 #include "sim/probe/probe.hh"
 
 namespace gem5
@@ -507,6 +508,9 @@ class Commit
         /** Number of cycles where the commit bandwidth limit is reached. */
         statistics::Scalar commitEligibleSamples;
     } stats;
+    Tick lastCommitTick;
+    ArchDBer *archDBer;
+    void dumpTicks(const DynInstPtr &inst);
 };
 
 } // namespace o3

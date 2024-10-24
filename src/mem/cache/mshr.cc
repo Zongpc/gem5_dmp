@@ -79,7 +79,7 @@ MSHR::TargetList::TargetList(const std::string &name)
 
 void
 MSHR::TargetList::updateFlags(PacketPtr pkt, Target::Source source,
-                            bool alloc_on_fill)
+                              bool alloc_on_fill)
 {
     if (source != Target::FromSnoop) {
         if (pkt->needsWritable()) {
@@ -101,6 +101,18 @@ MSHR::TargetList::updateFlags(PacketPtr pkt, Target::Source source,
             hasFromCache = hasFromCache || pkt->fromCache();
 
             updateWriteFlags(pkt);
+        } else if (!hasFromPref) {  // first pkt && is pref
+            pfSource = pkt->req->getXsMetadata().prefetchSource;
+            pfDepth = pkt->req->getXsMetadata().prefetchDepth;
+            DPRINTF(Cache, "MSHR: set source as prefetcher %i\n", pfSource);
+        }
+
+        if (source == Target::FromPrefetcher) {
+            hasFromPref = true;
+        }
+
+        if (source == Target::FromCPU) {
+            hasFromCPU = true;
         }
     }
 }
@@ -150,7 +162,15 @@ MSHR::TargetList::updateWriteFlags(PacketPtr pkt)
         if (first_write || compat_write) {
             auto offset = pkt->getOffset(blkSize);
             auto begin = writesBitmap.begin() + offset;
-            std::fill(begin, begin + pkt->getSize(), true);
+            if (pkt->isMaskedWrite()) {
+                for (int i=0;i<pkt->getSize();i++,begin++) {
+                    if (pkt->req->getByteEnable()[i]) {
+                        *begin = true;
+                    }
+                }
+            } else {
+                std::fill(begin, begin + pkt->getSize(), true);
+            }
         }
 
         // We won't allow further merging if this has been a
@@ -322,6 +342,7 @@ MSHR::allocate(Addr blk_addr, unsigned blk_size, PacketPtr target,
     // snoop (mem-side request), so set source according to request here
     Target::Source source = (target->cmd == MemCmd::HardPFReq) ?
         Target::FromPrefetcher : Target::FromCPU;
+    DPRINTF(MSHR, "New MSHR allocated: %s, from cpu: %i\n", target->print(), Target::FromCPU);
     targets.add(target, when_ready, _order, source, true, alloc_on_fill);
 
     // All targets must refer to the same block
@@ -475,6 +496,11 @@ MSHR::handleSnoop(PacketPtr pkt, Counter _order)
     // matching the conditions checked in Cache::handleSnoop
     const bool will_respond = isPendingModified() && pkt->needsResponse() &&
         !pkt->isClean();
+    DPRINTF(MSHR, "%s isPendingModified: %d pkt->needsResponse(): %d "
+            "pkt->isClean(): %d pkt->isInvalidate(): %d will_respond: %d\n",
+            __func__, isPendingModified(), pkt->needsResponse(),
+            pkt->isClean(), pkt->isInvalidate(), will_respond);
+
     if (isPendingModified() || pkt->isInvalidate()) {
         // We need to save and replay the packet in two cases:
         // 1. We're awaiting a writable copy (Modified or Exclusive),
@@ -503,7 +529,12 @@ MSHR::handleSnoop(PacketPtr pkt, Counter _order)
             // respond, and depending on whether the packet
             // needsWritable or not we either pass a Shared line or a
             // Modified line
+            DPRINTF(MSHR,
+                    "%s set packet %s (%#lx) as cache responding, when cache pending mod or inval, responding by mshr "
+                    "%#lx\n",
+                    __func__, pkt->print(), (uint64_t)pkt, (uint64_t)this);
             pkt->setCacheResponding();
+            cp_pkt->setCacheRespondingBy((uint64_t) this);
 
             // inform the cache hierarchy that this cache had the line
             // in the Modified state, even if the response is passed
@@ -553,17 +584,13 @@ MSHR::extractServiceableTargets(PacketPtr pkt)
     // non-FromCPU target. This way the remaining FromCPU targets
     // issue a new request and get a fresh copy of the block and we
     // avoid memory consistency violations.
-    // 如果下游的 MSHR（内存系统请求记录）接收到一个无效请求（invalidation request），则我们仅
-    // 服务第一个来自 FromCPU 的目标以及任何其他非 FromCPU 的目标。这样做的目的是让剩下的 FromCPU 目标
-    // 发起一个新的请求并获得该内存块的最新副本，从而避免了内存一致性违规的情况。
     if (pkt->cmd == MemCmd::ReadRespWithInvalidate) {
         auto it = targets.begin();
         assert((it->source == Target::FromCPU) ||
-                (it->source == Target::FromPrefetcher));
+               (it->source == Target::FromPrefetcher));
         ready_targets.push_back(*it);
         // Leave the Locked RMW Read until the corresponding Locked Write
         // request comes in
-        // 保留锁定的 RMW（Read-Modify-Write，读取-修改-写入）读操作，直到对应的锁定写请求到来。
         if (it->pkt->cmd != MemCmd::LockedRMWReadReq) {
             it = targets.erase(it);
             while (it != targets.end()) {
@@ -580,15 +607,16 @@ MSHR::extractServiceableTargets(PacketPtr pkt)
     } else {
         auto it = targets.begin();
         while (it != targets.end()) {
+            DPRINTF(Cache, "target's packet addr: %#lx\n", it->pkt);
+            DPRINTF(Cache, "Get target: %s from targets\n", it->pkt->print());
             ready_targets.push_back(*it);
             if (it->pkt->cmd == MemCmd::LockedRMWReadReq) {
                 // Leave the Locked RMW Read until the corresponding Locked
                 // Write comes in. Also don't service any later targets as the
                 // line is now "locked".
-                // 在处理锁定的读取-修改-写（RMW，Read-Modify-Write）操作时，应该保留读取操作的状态，直到对应的锁定写请求到达。
-                // 同时，在这条数据线被“锁定”之后，不要服务后续的目标请求。
                 break;
             }
+            DPRINTF(Cache, "Erase target: %s from targets\n", it->pkt->print());
             it = targets.erase(it);
         }
         ready_targets.populateFlags();

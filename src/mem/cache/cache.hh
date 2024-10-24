@@ -88,8 +88,7 @@ class Cache : public BaseCache
     bool access(PacketPtr pkt, CacheBlk *&blk, Cycles &lat,
                 PacketList &writebacks) override;
 
-    void handleTimingReqHit(PacketPtr pkt, CacheBlk *blk,
-                            Tick request_time) override;
+    void handleTimingReqHit(PacketPtr pkt, CacheBlk *blk, Tick request_time, bool first_acc_after_pf) override;
 
     void handleTimingReqMiss(PacketPtr pkt, CacheBlk *blk,
                              Tick forward_time,
@@ -135,7 +134,7 @@ class Cache : public BaseCache
      * @return The snoop delay incurred by the upwards snoop
      */
     uint32_t handleSnoop(PacketPtr pkt, CacheBlk *blk,
-                         bool is_timing, bool is_deferred, bool pending_inval);
+                         bool is_timing, bool is_deferred, bool pending_inval, MSHR *deferring_mshr);
 
     [[nodiscard]] PacketPtr evictBlock(CacheBlk *blk) override;
 

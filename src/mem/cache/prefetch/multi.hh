@@ -57,7 +57,8 @@ class Multi : public Base
     Multi(const MultiPrefetcherParams &p);
 
   public:
-    void setCache(BaseCache *_cache) override;
+    void setParentInfo(System *sys, ProbeManager *pm, CacheAccessor* _cache, unsigned blk_size) override;
+    void addTLB(BaseTLB* _t) override;
     PacketPtr getPacket() override;
     Tick nextPrefetchReadyTime() const override;
 
@@ -69,6 +70,14 @@ class Multi : public Base
     void notify(const PacketPtr &pkt, const PrefetchInfo &pfi) override {};
     void notifyFill(const PacketPtr &pkt) override {};
     /** @} */
+
+  public:
+    void rxHint(BaseMMU::Translation *dpp) override {
+        panic("MultiPrefetcher: rxHint not implemented");
+    }
+    void pfHitNotify(float accuracy, PrefetchSourceType pf_source, const PacketPtr &pkt) override {
+        panic("MultiPrefetcher: rxNotify not implemented");
+    }
 
   protected:
     /** List of sub-prefetchers ordered by priority. */

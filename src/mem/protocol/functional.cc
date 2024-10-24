@@ -53,6 +53,16 @@ FunctionalRequestProtocol::send(
     return peer->recvFunctional(pkt);
 }
 
+void FunctionalRequestProtocol::sendFunctionalCustomSignal(
+    FunctionalResponseProtocol *peer, PacketPtr pkt, int sig) const
+{
+    return peer->recvFunctionalCustomSignal(pkt, sig);
+}
+void* FunctionalRequestProtocol::recvGetCPUPtr()
+{
+    panic("recvGetCPUPtr not implemented\n");
+    return nullptr;
+}
 /* The response protocol. */
 
 void
@@ -63,4 +73,13 @@ FunctionalResponseProtocol::sendSnoop(
     return peer->recvFunctionalSnoop(pkt);
 }
 
+void FunctionalResponseProtocol::sendFunctionalCustomSignal(
+    FunctionalRequestProtocol *peer, PacketPtr pkt, int sig) const
+{
+    return peer->recvFunctionalCustomSignal(pkt, sig);
+}
+void* FunctionalResponseProtocol::sendGetCPUPtr(FunctionalRequestProtocol *peer) const
+{
+    return peer->recvGetCPUPtr();
+}
 } // namespace gem5

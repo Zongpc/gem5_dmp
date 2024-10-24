@@ -180,13 +180,16 @@ class CacheBlk : public TaggedEntry
 
         if (other.wasPrefetched()) {
             setPrefetched();
-            setPrefetchedAllocate();
         }
-        setPC(other.getPC());
+        if (other.needInvalidate()) {
+            setPendingInvalidate();
+        }
         setCoherenceBits(other.coherence);
         setTaskId(other.getTaskId());
+        setXsMetadata(other.getXsMetadata());
         setWhenReady(curTick());
         setRefCount(other.getRefCount());
+        setDemandHits(other.getDemandHits());
         setSrcRequestorId(other.getSrcRequestorId());
         std::swap(lockList, other.lockList);
 
@@ -203,14 +206,15 @@ class CacheBlk : public TaggedEntry
     {
         TaggedEntry::invalidate();
 
-        clearPrefetched();
-        clearPrefetchedAllocate();
-        clearPC();
+        clearAllPrefetched();
+        clearPendingInvalidate();
         clearCoherenceBits(AllBits);
 
         setTaskId(context_switch_task_id::Unknown);
+        this->_xsMeta.invalidate();
         setWhenReady(MaxTick);
         setRefCount(0);
+        setDemandHits(0);
         setSrcRequestorId(Request::invldRequestorId);
         lockList.clear();
     }
@@ -252,26 +256,41 @@ class CacheBlk : public TaggedEntry
      */
     bool wasPrefetched() const { return _prefetched; }
 
+    bool wasEverPrefetched() const { return _ever_prefetched; }
+
+    int hitway() const { return _way; }
+
     /**
      * Clear the prefetching bit. Either because it was recently used, or due
      * to the block being invalidated.
      */
-    void clearPrefetched() { _prefetched = false; }
+    void clearPrefetched()
+    {
+        _prefetched = false;
+        _xsMeta.prefetchDepth = 0;
+    }
+
+
+    void clearAllPrefetched()
+    {
+        _prefetched = false;
+        _ever_prefetched = false;
+        _xsMeta.prefetchDepth = 0;
+    }
 
     /** Marks this blocks as a recently prefetched block. */
-    void setPrefetched() { _prefetched = true; }
+    void setPrefetched()
+    {
+        _prefetched = true;
+        _ever_prefetched = true;
+    }
+    void setHitWay(int hitway) { _way = hitway; }
 
-    bool fromPrefetched() const { return _prefetched_allocate; };
+    bool needInvalidate() const { return _needInvalidate; }
 
-    void clearPrefetchedAllocate() { _prefetched_allocate = false; };
+    void setPendingInvalidate() { _needInvalidate = true; }
 
-    void setPrefetchedAllocate() { _prefetched_allocate = true; };
-
-    Addr getPC() const { return _src_pc; };
-
-    void setPC(Addr pc) { _src_pc = pc; };
-
-    void clearPC() { _src_pc = MaxAddr; };
+    void clearPendingInvalidate() { _needInvalidate = false; }
 
     /**
      * Get tick at which block's data will be available for access.
@@ -300,14 +319,23 @@ class CacheBlk : public TaggedEntry
     /** Get the task id associated to this block. */
     uint32_t getTaskId() const { return _taskId; }
 
+    /** get the XS metadata associated to this block. */
+    Request::XsMetadata getXsMetadata() const { return _xsMeta; }
+
     /** Get the requestor id associated to this block. */
     uint32_t getSrcRequestorId() const { return _srcRequestorId; }
 
     /** Get the number of references to this block since insertion. */
     unsigned getRefCount() const { return _refCount; }
 
+    /** Get the number of demand hits to this block since insertion. */
+    unsigned getDemandHits() const { return _refDemandHits; }
+
     /** Get the number of references to this block since insertion. */
     void increaseRefCount() { _refCount++; }
+
+    /** increase one demand hits to this block since insertion. */
+    void increaseDemandHits() { _refDemandHits++; }
 
     /**
      * Get the block's age, that is, the number of ticks since its insertion.
@@ -334,6 +362,9 @@ class CacheBlk : public TaggedEntry
      */
     void insert(const Addr tag, const bool is_secure,
         const int src_requestor_ID, const uint32_t task_ID);
+    void insert(const Addr tag, const bool is_secure,
+        const int src_requestor_ID, const uint32_t task_ID,
+        const Request::XsMetadata &xs_meta);
     using TaggedEntry::insert;
 
     /**
@@ -415,9 +446,9 @@ class CacheBlk : public TaggedEntry
           default:    s = 'T'; break; // @TODO add other types
         }
         return csprintf("state: %x (%c) writable: %d readable: %d "
-            "dirty: %d prefetched: %d from_pf: %d | pc %llx |%s", coherence, s,
+            "dirty: %d prefetched: %d | %s", coherence, s,
             isSet(WritableBit), isSet(ReadableBit), isSet(DirtyBit),
-            wasPrefetched(), fromPrefetched(), getPC(), TaggedEntry::print());
+            wasPrefetched(), TaggedEntry::print());
     }
 
     /**
@@ -467,6 +498,12 @@ class CacheBlk : public TaggedEntry
         }
     }
 
+    /** Set the XS metadata. */
+    void setXsMetadata(const Request::XsMetadata &xs_meta)
+    {
+        _xsMeta = xs_meta;
+    }
+
   protected:
     /** The current coherence status of this block. @sa CoherenceBits */
     unsigned coherence;
@@ -485,6 +522,9 @@ class CacheBlk : public TaggedEntry
     /** Set the number of references to this block since insertion. */
     void setRefCount(const unsigned count) { _refCount = count; }
 
+    /** Set the number of demand hits to this block since insertion. */
+    void setDemandHits(const unsigned count) { _refDemandHits = count; }
+
     /** Set the current tick as this block's insertion tick. */
     void setTickInserted() { _tickInserted = curTick(); }
 
@@ -492,11 +532,16 @@ class CacheBlk : public TaggedEntry
     /** Task Id associated with this block */
     uint32_t _taskId = 0;
 
+    Request::XsMetadata _xsMeta;
+
     /** holds the source requestor ID for this block. */
     int _srcRequestorId = 0;
 
     /** Number of references to this block since it was brought in. */
     unsigned _refCount = 0;
+
+    /** Number of demand hits to this block since it was brought in. */
+    unsigned _refDemandHits = 0;
 
     /**
      * Tick on which the block was inserted in the cache. Its value is only
@@ -507,10 +552,12 @@ class CacheBlk : public TaggedEntry
     /** Whether this block is an unaccessed hardware prefetch. */
     bool _prefetched = 0;
 
-    bool _prefetched_allocate = 0;
+    bool _ever_prefetched = 0;
 
-    /** The PC which triggers the cache block refilled*/
-    Addr _src_pc = MaxAddr;
+    /** Whether there is a pending invalidate on this block. */
+    bool _needInvalidate = 0;
+    /**if the blk hit which is the hit way ? */
+    int _way = DEFAULTWAYPRE;
 };
 
 /**

@@ -89,7 +89,11 @@ BaseTags::findBlock(Addr addr, bool is_secure) const
     // Search for block
     for (const auto& location : entries) {
         CacheBlk* blk = static_cast<CacheBlk*>(location);
+        int way = location->getWay();
         if (blk->matchTag(tag, is_secure)) {
+            if ((blk->getWay() != way) && (blk->getWay() != DEFAULTWAYPRE))
+                panic("Unexpected way %d\n", blk->getWay());
+            blk->setHitWay(way);
             return blk;
         }
     }
@@ -112,8 +116,16 @@ BaseTags::insertBlock(const PacketPtr pkt, CacheBlk *blk)
     stats.occupancies[requestor_id]++;
 
     // Insert block with tag, src requestor id and task id
-    blk->insert(extractTag(pkt->getAddr()), pkt->isSecure(), requestor_id,
-                pkt->req->taskId());
+    if (pkt->req->hasXsMetadata())
+    {
+        blk->insert(extractTag(pkt->getAddr()), pkt->isSecure(), requestor_id,
+                    pkt->req->taskId(),
+                    pkt->req->getXsMetadata());
+    }
+    else {
+        blk->insert(extractTag(pkt->getAddr()), pkt->isSecure(), requestor_id,
+                    pkt->req->taskId());
+    }
 
     // Check if cache warm up is done
     if (!warmedUp && stats.tagsInUse.value() >= warmupBound) {

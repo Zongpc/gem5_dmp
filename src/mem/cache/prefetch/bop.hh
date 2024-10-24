@@ -37,7 +37,11 @@
 #define __MEM_CACHE_PREFETCH_BOP_HH__
 
 #include <queue>
+#include <set>
+#include <boost/compute/detail/lru_cache.hpp>
 
+#include "base/sat_counter.hh"
+#include "base/statistics.hh"
 #include "mem/cache/prefetch/queued.hh"
 #include "mem/packet.hh"
 
@@ -72,12 +76,53 @@ class BOP : public Queued
         const unsigned int delayQueueSize;
         const unsigned int delayTicks;
 
-        std::vector<Addr> rrLeft;
-        std::vector<Addr> rrRight;
+        const int victimListSize;
+        const int restoreCycle;
+
+        bool victimRestoreScheduled = false;
+        Event *restore_event;
+
+        struct RREntryDebug
+        {
+            Addr fullAddr;
+            Addr hashAddr;
+
+            RREntryDebug(Addr full_addr, Addr hash_addr) : fullAddr(full_addr), hashAddr(hash_addr) {}
+            RREntryDebug() : fullAddr(0), hashAddr(0) {}
+        };
+
+        std::vector<RREntryDebug> rrLeft;
+        std::vector<RREntryDebug> rrRight;
 
         /** Structure to save the offset and the score */
-        typedef std::pair<int16_t, uint8_t> OffsetListEntry;
-        std::vector<OffsetListEntry> offsetsList;
+        // typedef std::pair<int16_t, uint8_t> OffsetListEntry;
+        struct OffsetListEntry{
+            int32_t offset;  // offset, name it as first to make it compatible with pair
+            uint8_t score;  // score, name it as second to make it compatible with pair
+            int16_t depth;
+            SatCounter8 late;
+
+            OffsetListEntry(int32_t x, uint8_t y)
+                : offset(x), score(y), depth(1), late(6, 32)
+            {}
+
+            int64_t calcOffset() const
+            {
+                assert(offset != 0);
+                return offset * depth;
+            }
+
+            bool operator==(const int64_t t){
+                return offset == t;
+            }
+        };
+        std::vector<int> originOffsets;
+        std::list<OffsetListEntry> offsetsList;
+        std::list<int> victimOffsetsList;
+
+        size_t maxOffsetCount{32};
+
+        // std::set<int32_t> offsets;
 
         /** In a first implementation of the BO prefetcher, both banks of the
          *  RR were written simultaneously when a prefetched line is inserted
@@ -87,10 +132,10 @@ class BOP : public Queued
          */
         struct DelayQueueEntry
         {
-            Addr baseAddr;
+            RREntryDebug rrEntry;
             Tick processTick;
 
-            DelayQueueEntry(Addr x, Tick t) : baseAddr(x), processTick(t)
+            DelayQueueEntry(const RREntryDebug &other, Tick t) : rrEntry(other), processTick(t)
             {}
         };
 
@@ -103,15 +148,20 @@ class BOP : public Queued
         /** Hardware prefetcher enabled */
         bool issuePrefetchRequests;
         /** Current best offset to issue prefetches */
-        Addr bestOffset;
+        int64_t bestOffset;
         /** Current best offset found in the learning phase */
-        Addr phaseBestOffset;
+        int64_t phaseBestOffset;
         /** Current test offset index */
-        std::vector<OffsetListEntry>::iterator offsetsListIterator;
+        std::list<OffsetListEntry>::iterator offsetsListIterator;
+
+        std::list<OffsetListEntry>::iterator bestoffsetsListIterator;
+
         /** Max score found so far */
         unsigned int bestScore;
         /** Current round */
         unsigned int round;
+
+        std::list<OffsetListEntry>::iterator getBestOffsetIter();
 
         /** Generate a hash for the specified address to index the RR table
          *  @param addr: address to hash
@@ -120,16 +170,24 @@ class BOP : public Queued
         unsigned int hash(Addr addr, unsigned int way) const;
 
         /** Insert the specified address into the RR table
-         *  @param addr: address to insert
+         *  @param addr: full address to insert
+         *  @param tag: hashed address to insert
          *  @param way: RR table to which the address will be inserted
          */
-        void insertIntoRR(Addr addr, unsigned int way);
+        void insertIntoRR(Addr full_addr, Addr tag, unsigned int way);
+
+        /** Insert the specified address into the RR table
+         *  @param rr_entry: rr_entry to insert
+         *  @param way: RR table to which the address will be inserted
+         */
+        void insertIntoRR(RREntryDebug rr_entry, unsigned int way);
 
         /** Insert the specified address into the delay queue. This will
          *  trigger an event after the delay cycles pass
-         *  @param addr: address to insert into the delay queue
+         *  @param addr: full address to insert
+         *  @param tag: hashed address to insert
          */
-        void insertIntoDelayQueue(Addr addr);
+        void insertIntoDelayQueue(Addr full_addr, Addr tag);
 
         /** Reset all the scores from the offset list */
         void resetScores();
@@ -142,22 +200,45 @@ class BOP : public Queued
 
         /** Test if @X-O is hitting in the RR table to update the
             offset score */
-        bool testRR(Addr) const;
+        std::pair<bool, RREntryDebug> testRR(Addr tag) const;
 
         /** Learning phase of the BOP. Update the intermediate values of the
             round and update the best offset if found */
-        void bestOffsetLearning(Addr);
+        bool bestOffsetLearning(Addr hashed_addr, bool late, const PrefetchInfo &pfi);
+
+        unsigned missCount{0};
+
+        bool sendPFWithFilter(const PrefetchInfo &pfi, Addr addr, std::vector<AddrPriority> &addresses, int prio,
+                              PrefetchSourceType src);
+
+        struct BopStats : public statistics::Group
+        {
+            BopStats(statistics::Group *parent);
+            statistics::Distribution issuedOffsetDist;
+            statistics::Scalar learnOffsetCount;
+            statistics::Scalar throttledCount;
+        } stats;
+
+    public:
+        boost::compute::detail::lru_cache<Addr, Addr> *filter;
 
         /** Update the RR right table after a prefetch fill */
         void notifyFill(const PacketPtr& pkt) override;
-
-    public:
 
         BOP(const BOPPrefetcherParams &p);
         ~BOP() = default;
 
         void calculatePrefetch(const PrefetchInfo &pfi,
-                                std::vector<AddrPriority> &addresses) override;
+                               std::vector<AddrPriority> &addresses) override
+        {
+            panic("not implemented");
+        };
+
+        using Queued::calculatePrefetch;
+
+        void calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addresses, bool late);
+        
+        bool tryAddOffset(int64_t offset, bool late = false);
 };
 
 } // namespace prefetch

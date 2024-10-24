@@ -124,6 +124,9 @@ class RequestPort: public Port, public AtomicRequestProtocol,
     void printAddr(Addr a);
 
   public:
+    /* The custom functions. */
+    void sendCustomSignal(PacketPtr pkt, int sig);
+  public:
     /* The atomic protocol. */
 
     /**
@@ -311,6 +314,25 @@ class ResponsePort : public Port, public AtomicResponseProtocol,
     void bind(Port &peer) override {}
 
   public:
+    /* The custom functions. */
+    void sendCustomSignal(PacketPtr pkt, int sig)
+    {
+        try {
+            FunctionalResponseProtocol::sendFunctionalCustomSignal(_requestPort, pkt, sig);
+        } catch (UnboundPortException) {
+            reportUnbound();
+        }
+    }
+    void* sendGetCPUPtr()
+    {
+        try {
+            warn("Peer is %s\n", _requestPort->name());
+            return FunctionalResponseProtocol::sendGetCPUPtr(_requestPort);
+        } catch (UnboundPortException) {
+            reportUnbound();
+        }
+    }
+  public:
     /* The atomic protocol. */
 
     /**
@@ -366,7 +388,7 @@ class ResponsePort : public Port, public AtomicResponseProtocol,
      *
      * @return If the send was successful or not.
     */
-    virtual bool
+    bool
     sendTimingResp(PacketPtr pkt)
     {
         try {
@@ -460,6 +482,15 @@ class [[deprecated]] SlavePort : public ResponsePort
               {}
 };
 
+inline void
+RequestPort::sendCustomSignal(PacketPtr pkt, int sig)
+{
+    try {
+        FunctionalRequestProtocol::sendFunctionalCustomSignal(_responsePort, pkt, sig);
+    } catch (UnboundPortException) {
+        reportUnbound();
+    }
+}
 inline Tick
 RequestPort::sendAtomic(PacketPtr pkt)
 {

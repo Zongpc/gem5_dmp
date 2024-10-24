@@ -29,16 +29,33 @@
 Import('*')
 
 SimObject('Prefetcher.py', sim_objects=[
-    'BasePrefetcher', 'MultiPrefetcher', 'QueuedPrefetcher',
+    'CMCPrefetcher', 'BasePrefetcher', 'MultiPrefetcher', 'QueuedPrefetcher',
+    'XSCompositePrefetcher', 'XSStridePrefetcher','OptPrefetcher','XsStreamPrefetcher',
+    'BertiPrefetcher', 'CDP',
     'StridePrefetcherHashedSetAssociative', 'StridePrefetcher',
     'TaggedPrefetcher', 'IndirectMemoryPrefetcher', 'SignaturePathPrefetcher',
     'SignaturePathPrefetcherV2', 'AccessMapPatternMatching', 'AMPMPrefetcher',
     'DeltaCorrelatingPredictionTables', 'DCPTPrefetcher',
     'IrregularStreamBufferPrefetcher', 'SlimAMPMPrefetcher',
-    'BOPPrefetcher', 'SBOOEPrefetcher', 'STeMSPrefetcher', 'PIFPrefetcher',
-    'DiffMatchingPrefetcher',
-    'BertiPrefetcherHashedSetAssociative','BertiPrefetcher',
-    'IPClassifierBasedL1Prefetcher'])
+    'WorkerPrefetcher',
+    'BOPPrefetcher', 'SBOOEPrefetcher', 'STeMSPrefetcher', 'PIFPrefetcher', 'IPCPrefetcher',
+    'CompositeWithWorkerPrefetcher', 'L2CompositeWithWorkerPrefetcher'])
+
+
+DebugFlag('BOPPrefetcher')
+DebugFlag('BOPOffsets')
+DebugFlag('XSCompositePrefetcher')
+DebugFlag('XSStridePrefetcher')
+DebugFlag('OptPrefetcher')
+DebugFlag('XsStreamPrefetcher')
+DebugFlag('BertiPrefetcher')
+DebugFlag('SPP')
+DebugFlag('WorkerPref')
+DebugFlag('IPCP')
+DebugFlag('CDPUseful')
+DebugFlag('CDPdebug')
+DebugFlag('CDPdepth')
+DebugFlag('CMCPrefetcher')
 
 Source('access_map_pattern_matching.cc')
 Source('base.cc')
@@ -49,16 +66,22 @@ Source('irregular_stream_buffer.cc')
 Source('indirect_memory.cc')
 Source('pif.cc')
 Source('queued.cc')
+Source('sms.cc')
+Source('ipcp.cc')
+Source('xs_stride.cc')
+Source('opt.cc')
+Source('xs_stream.cc')
+Source('berti.cc')
 Source('sbooe.cc')
 Source('signature_path.cc')
 Source('signature_path_v2.cc')
+Source('cdp.cc')
 Source('slim_ampm.cc')
 Source('spatio_temporal_memory_streaming.cc')
 Source('stride.cc')
 Source('tagged.cc')
-Source('diff_matching.cc')
-Source('berti.cc')
-Source('ip_classifier_based_l1.cc')
+Source('worker.cc')
+Source('cmc.cc')
+Source('composite_with_worker.cc')
+Source('l2_composite_with_worker.cc')
 
-DebugFlag('DMP')
-DebugFlag('POINTER')

@@ -57,10 +57,13 @@
 #include "base/types.hh"
 #include "debug/Cache.hh"
 #include "debug/CachePort.hh"
+#include "debug/CacheTrace.hh"
 #include "enums/Clusivity.hh"
 #include "mem/cache/cache_blk.hh"
+#include "mem/cache/cache_probe_arg.hh"
 #include "mem/cache/compressors/base.hh"
 #include "mem/cache/mshr_queue.hh"
+#include "mem/cache/prefetch/associative_set.hh"
 #include "mem/cache/tags/base.hh"
 #include "mem/cache/write_queue.hh"
 #include "mem/cache/write_queue_entry.hh"
@@ -69,6 +72,7 @@
 #include "mem/qport.hh"
 #include "mem/request.hh"
 #include "params/WriteAllocator.hh"
+#include "sim/arch_db.hh"
 #include "sim/clocked_object.hh"
 #include "sim/eventq.hh"
 #include "sim/probe/probe.hh"
@@ -92,9 +96,9 @@ struct BaseCacheParams;
 /**
  * A basic cache interface. Implements some common functions for speed.
  */
-class BaseCache : public ClockedObject
+class BaseCache : public ClockedObject, CacheAccessor
 {
-    protected:
+  protected:
     /**
      * Indexes to enumerate the MSHR queues.
      */
@@ -104,7 +108,7 @@ class BaseCache : public ClockedObject
         MSHRQueue_WriteBuffer
     };
 
-    public:
+  public:
     /**
      * Reasons for caches to be blocked.
      */
@@ -228,6 +232,8 @@ class BaseCache : public ClockedObject
             }
             return false;
         }
+
+        bool hasSchedSendEvent() const { return sendEvent.scheduled(); }
     };
 
 
@@ -261,6 +267,8 @@ class BaseCache : public ClockedObject
 
         MemSidePort(const std::string &_name, BaseCache *_cache,
                     const std::string &_label);
+
+        bool hasSchedSendEvent() const { return _reqQueue.hasSchedSendEvent(); }
     };
 
     /**
@@ -328,16 +336,6 @@ class BaseCache : public ClockedObject
 
         virtual AddrRangeList getAddrRanges() const override;
 
-        virtual bool sendTimingResp(PacketPtr pkt) override
-        {
-            bool rep_res = ResponsePort::sendTimingResp(pkt);
-
-            if (rep_res) {
-                cache->ppL1Resp->notify(pkt);
-            }
-            return rep_res;
-        };
-
       public:
 
         CpuSidePort(const std::string &_name, BaseCache *_cache,
@@ -347,6 +345,18 @@ class BaseCache : public ClockedObject
 
     CpuSidePort cpuSidePort;
     MemSidePort memSidePort;
+
+    class SendTimingRespEvent : public Event
+    {
+      private:
+        BaseCache* cache;
+        PacketPtr pkt;
+      public:
+        SendTimingRespEvent(BaseCache* cache, PacketPtr pkt);
+        void process() override;
+        const char* description() const override;
+    };
+
 
   protected:
 
@@ -374,9 +384,7 @@ class BaseCache : public ClockedObject
     /** To probe when a cache fill occurs */
     ProbePointArg<PacketPtr> *ppFill;
 
-    ProbePointArg<PacketPtr> *ppL1Req;
-    ProbePointArg<PacketPtr> *ppL1Resp;
-
+    ProbePointArg<PacketPtr>* ppStorePFTrain;
     /**
      * To probe when the contents of a block are updated. Content updates
      * include data fills, overwrites, and invalidations, which means that
@@ -511,8 +519,7 @@ class BaseCache : public ClockedObject
      * @param blk The referenced block
      * @param request_time The tick at which the block lookup is compete
      */
-    virtual void handleTimingReqHit(PacketPtr pkt, CacheBlk *blk,
-                                    Tick request_time);
+    virtual void handleTimingReqHit(PacketPtr pkt, CacheBlk *blk, Tick request_time, bool first_acc_after_pf);
 
     /*
      * Handle a timing request that missed in the cache
@@ -548,6 +555,33 @@ class BaseCache : public ClockedObject
      * @param pkt The request to perform.
      */
     virtual void recvTimingReq(PacketPtr pkt);
+
+    /**way prediction **/
+    const int SETROFFSET = 6;
+    const int SETMASK = 0x7f;
+
+    const int TAGOFFSET = 3;
+    const int TAGMASK = 0x7;
+
+    int getPreWay(PacketPtr pkt);
+
+    void writePreWay(PacketPtr pkt, int way);
+
+    int indexWayPre(Addr addr,int hit_way);
+
+    class waypreEntry : public TaggedEntry
+    {
+      public:
+        Addr index;
+        Addr way;
+        waypreEntry() : TaggedEntry(), index(0), way(0) {}
+        void _setSecure(bool is_secure)
+        {
+            if (is_secure)
+                TaggedEntry::setSecure();
+        }
+    };
+    AssociativeSet<waypreEntry> indexWayPreTable;
 
     /**
      * Handling the special case of uncacheable write responses to
@@ -648,6 +682,8 @@ class BaseCache : public ClockedObject
      * for prioritizing among those sources on the fly.
      */
     QueueEntry* getNextQueueEntry();
+
+    bool hasHintsWaiting();
 
     /**
      * Insert writebacks into the write buffer
@@ -755,6 +791,9 @@ class BaseCache : public ClockedObject
     virtual void satisfyRequest(PacketPtr pkt, CacheBlk *blk,
                                 bool deferred_response = false,
                                 bool pending_downgrade = false);
+
+
+    bool exclusiveCacheInvalidate(bool from_cache, CacheBlk *blk);
 
     /**
      * Maintain the clusivity of this cache by potentially
@@ -899,6 +938,11 @@ class BaseCache : public ClockedObject
 
     /** Block size of this cache */
     const unsigned blkSize;
+    const int size ;
+    const int assoc;
+    const bool enableWayPrediction;
+    const int DEFAULTWAYPRESIZE = 65536;
+    std::vector<std::vector<int>> wayPreTable;
 
     /**
      * The latency of tag lookup of a cache. It occurs when there is
@@ -994,6 +1038,11 @@ class BaseCache : public ClockedObject
      * Normally this is all possible memory addresses. */
     const AddrRangeList addrRanges;
 
+    /** ArchDB */
+    ArchDBer *archDBer;
+
+    int squashedWays;
+
   public:
     /** System we are currently operating in. */
     System *system;
@@ -1015,18 +1064,9 @@ class BaseCache : public ClockedObject
         /** Number of hits per thread for each type of command.
             @sa Packet::Command */
         statistics::Vector hits;
-        statistics::Vector hitsPerPC;
-
-        statistics::Vector hitsAtPf;
-        statistics::Vector hitsAtPfPerPC;
-
-        statistics::Vector hitsAtPfAlloc;
-        statistics::Vector hitsAtPfAllocPerPC;
-
         /** Number of misses per thread for each type of command.
             @sa Packet::Command */
         statistics::Vector misses;
-        statistics::Vector missesPerPC;
         /**
          * Total number of ticks per thread/command spent waiting for a hit.
          * Used to calculate the average hit latency.
@@ -1037,25 +1077,20 @@ class BaseCache : public ClockedObject
          * Used to calculate the average miss latency.
          */
         statistics::Vector missLatency;
+        statistics::Distribution missLatencyDist;
+
         /** The number of accesses per command and thread. */
         statistics::Formula accesses;
-        statistics::Formula accessesPerPC;
         /** The miss rate per command and thread. */
         statistics::Formula missRate;
         /** The average miss latency per command and thread. */
         statistics::Formula avgMissLatency;
         /** Number of misses that hit in the MSHRs per command and thread. */
         statistics::Vector mshrHits;
-        statistics::Vector mshrHitsPerPC;
-        /** Number of MSHR Hit which was allocated by prefetch*/
-        statistics::Vector mshrHitsAtPf;
-        statistics::Vector mshrHitsAtPfPerPC;
         /** Number of misses that miss in the MSHRs, per command and thread. */
         statistics::Vector mshrMisses;
-        statistics::Vector mshrMissesPerPC;
         /** Number of misses that miss in the MSHRs, per command and thread. */
         statistics::Vector mshrUncacheable;
-        statistics::Vector mshrUncacheablePerPC;
         /** Total tick latency of each MSHR miss, per command and thread. */
         statistics::Vector mshrMissLatency;
         /** Total tick latency of each MSHR miss, per command and thread. */
@@ -1082,22 +1117,6 @@ class BaseCache : public ClockedObject
 
         /** Number of hits for demand accesses. */
         statistics::Formula demandHits;
-        statistics::Formula demandHitsPerPC;
-        statistics::Formula demandHitsAtPf;
-        statistics::Formula demandHitsAtPfPerPC;
-
-        statistics::Formula demandHitsAtPfAlloc;
-        statistics::Formula demandHitsAtPfAllocPerPC;
-
-        statistics::Formula hitsAtPfCoverAccess;
-        statistics::Formula hitsAtPfCoverAccessPerPC;
-
-        statistics::Formula hitsAtPfAllocCoverAccess;
-        statistics::Formula hitsAtPfAllocCoverAccessPerPC;
-
-        statistics::Formula hitsPfRatio;
-        statistics::Formula hitsPfRatioPerPC;
-
         /** Number of hit for all accesses. */
         statistics::Formula overallHits;
         /** Total number of ticks spent waiting for demand hits. */
@@ -1107,7 +1126,6 @@ class BaseCache : public ClockedObject
 
         /** Number of misses for demand accesses. */
         statistics::Formula demandMisses;
-        statistics::Formula demandMissesPerPC;
         /** Number of misses for all accesses. */
         statistics::Formula overallMisses;
 
@@ -1118,13 +1136,11 @@ class BaseCache : public ClockedObject
 
         /** The number of demand accesses. */
         statistics::Formula demandAccesses;
-        statistics::Formula demandAccessesPerPC;
         /** The number of overall accesses. */
         statistics::Formula overallAccesses;
 
         /** The miss rate of all demand accesses. */
         statistics::Formula demandMissRate;
-        statistics::Formula demandMissRatePerPC;
         /** The miss rate for all accesses. */
         statistics::Formula overallMissRate;
 
@@ -1146,17 +1162,11 @@ class BaseCache : public ClockedObject
 
         /** Demand misses that hit in the MSHRs. */
         statistics::Formula demandMshrHits;
-        statistics::Formula demandMshrHitsPerPC;
         /** Total number of misses that hit in the MSHRs. */
         statistics::Formula overallMshrHits;
 
-        /** Number of MSHR Hit which was allocated by prefetch*/
-        statistics::Formula demandMshrHitsAtPf;
-        statistics::Formula demandMshrHitsAtPfPerPC;
-
         /** Demand misses that miss in the MSHRs. */
         statistics::Formula demandMshrMisses;
-        statistics::Formula demandMshrMissesPerPC;
         /** Total number of misses that miss in the MSHRs. */
         statistics::Formula overallMshrMisses;
 
@@ -1187,11 +1197,30 @@ class BaseCache : public ClockedObject
         /** Number of replacements of valid blocks. */
         statistics::Scalar replacements;
 
-        /** Number of prefetch blocks filled */
-        statistics::Scalar prefetchFills;
+        /**Number of waypre hit times */
+        statistics::Scalar wayPreHitTimes;
 
-        /** Number of prefetch hits */
-        statistics::Scalar prefetchHits;
+        statistics::Scalar wayPreIndexHitTimes;
+
+        statistics::Scalar wayPreDoubleHitTimes;
+
+        /*number of waypre times*/
+        statistics::Scalar wayPreTimes;
+
+        /** Number of replacements of dead blocks */
+        statistics::Scalar deadBlockReplacements;
+
+        /** Number of replacements of live blocks */
+        statistics::Scalar liveBlockReplacements;
+
+        /** Number of replacements of blocks from squashed inst and unused. */
+        statistics::Scalar squashedDeadBlockReplacements;
+
+        /** Number of replacements of blocks from squashed inst but reused. */
+        statistics::Scalar squashedLiveBlockReplacements;
+
+        /** Number of demand hits that accessed squashed inst blocks. */
+        statistics::Scalar squashedDemandHits;
 
         /** Number of data expansions. */
         statistics::Scalar dataExpansions;
@@ -1205,8 +1234,6 @@ class BaseCache : public ClockedObject
         /** Per-command statistics */
         std::vector<std::unique_ptr<CacheCmdStats>> cmd;
     } stats;
-
-    std::vector<Addr> stats_pc_list;
 
     /** Registers probes. */
     void regProbePoints() override;
@@ -1242,8 +1269,9 @@ class BaseCache : public ClockedObject
             setBlocked((BlockedCause)MSHRQueue_MSHRs);
         }
 
-        if (sched_send) {
+        if (sched_send && !memSidePort.hasSchedSendEvent()) {
             // schedule the send
+            DPRINTF(Cache, "Scheduling a send for addr %llx after alloc MSHR\n", pkt->getAddr());
             schedMemSideSendEvent(time);
         }
 
@@ -1338,27 +1366,6 @@ class BaseCache : public ClockedObject
         memSidePort.schedSendEvent(time);
     }
 
-    bool inCache(Addr addr, bool is_secure) const {
-        return tags->findBlock(addr, is_secure);
-    }
-
-    CacheBlk* getCacheBlk(Addr addr, bool is_secure) const {
-        return tags->findBlock(addr, is_secure);
-    }
-
-    bool hasBeenPrefetched(Addr addr, bool is_secure) const {
-        CacheBlk *block = tags->findBlock(addr, is_secure);
-        if (block) {
-            return block->wasPrefetched();
-        } else {
-            return false;
-        }
-    }
-
-    bool inMissQueue(Addr addr, bool is_secure) const {
-        return mshrQueue.findMatch(addr, is_secure);
-    }
-
     void incMissCount(PacketPtr pkt)
     {
         assert(pkt->req->requestorId() < system->maxRequestors());
@@ -1370,61 +1377,40 @@ class BaseCache : public ClockedObject
                 exitSimLoop("A cache reached the maximum miss count");
         }
 
-        if (pkt->req->hasPC()) {
-            Addr req_pc = pkt->req->getPC();
-            for (int i = 0; i < stats_pc_list.size(); i++) {
-                if (req_pc == stats_pc_list[i]) {
-                    stats.cmdStats(pkt).missesPerPC[i]++;
-                    break;
-                }
+        if (cacheLevel != 0 && !pkt->req->isInstFetch() && pkt->req->hasPC()) {
+            Addr pc = pkt->req->getPC();
+            auto it = pcMissCount.find(pc);
+            if (it == pcMissCount.end()) {
+                pcMissCount[pc] = 1;
+            } else {
+                it->second++;
             }
         }
     }
     void incHitCount(PacketPtr pkt)
     {
-        CacheBlk* blk = tags->findBlock(pkt->getAddr(), pkt->isSecure()); 
-
         assert(pkt->req->requestorId() < system->maxRequestors());
         stats.cmdStats(pkt).hits[pkt->req->requestorId()]++;
 
-        if (prefetcher && blk->wasPrefetched()) {
-            stats.cmdStats(pkt).hitsAtPf[pkt->req->requestorId()]++;
+        if (cacheLevel == 1 && !pkt->req->isInstFetch() && pkt->req->hasPC()) {
+            Addr pc = pkt->req->getPC();
         }
-
-        if (prefetcher && blk->fromPrefetched()) {
-            stats.cmdStats(pkt).hitsAtPfAlloc[pkt->req->requestorId()]++;
-        }
-
-        if (pkt->req->hasPC()) {
-            Addr req_pc = pkt->req->getPC();
-            for (int i = 0; i < stats_pc_list.size(); i++) {
-
-                if (req_pc == stats_pc_list[i]) {
-
-                    stats.cmdStats(pkt).hitsPerPC[i]++;
-
-                    if (prefetcher && blk->wasPrefetched()) {
-                        stats.cmdStats(pkt).hitsAtPfPerPC[i]++;
-                    }
-
-                    if (prefetcher && blk->fromPrefetched()) {
-                        stats.cmdStats(pkt).hitsAtPfAllocPerPC[i]++;
-                    }
-
-                    break;
-                }
-            }
-        }
-
     }
 
-    /**
-     * Checks if the cache is coalescing writes
-     *
-     * @return True if the cache is coalescing writes
-     */
-    bool coalesce() const;
+    void incSquashedDemandHitCount(PacketPtr pkt, CacheBlk *blk)
+    {
+        if (!pkt->isDemand())
+        {
+            return;
+        }
 
+        auto tmp_meta = blk->getXsMetadata();
+        if (tmp_meta.validXsMetadata && tmp_meta.instXsMetadata) {
+            if (tmp_meta.instXsMetadata->squashed){
+                stats.squashedDemandHits++;
+            }
+        }
+    }
 
     /**
      * Cache block visitor that writes back dirty cache blocks using
@@ -1466,6 +1452,77 @@ class BaseCache : public ClockedObject
      */
     void serialize(CheckpointOut &cp) const override;
     void unserialize(CheckpointIn &cp) override;
+
+  private:
+
+    const unsigned cacheLevel{0};
+
+    //const unsigned maxCacheLevel;
+
+    const bool dumpMissPC{false};
+
+    std::unordered_map<Addr, uint64_t> pcMissCount;
+
+    // std::set<Addr> forceHitPCs{0x11474, 0x11470, 0x11472, 0x119fa, 0x119fe, 0x119ea};
+    std::set<Addr> forceHitPCs{};
+
+    const bool forceHit;
+
+public:
+    // CacheAccessor overrided function
+
+    bool inCache(Addr addr, bool is_secure) const override { return tags->findBlock(addr, is_secure); }
+
+    unsigned level() const override { return cacheLevel; }
+
+    bool hasBeenPrefetched(Addr addr, bool is_secure) const override
+    {
+        CacheBlk *block = tags->findBlock(addr, is_secure);
+        if (block) {
+            return block->wasPrefetched();
+        } else {
+            return false;
+        }
+    }
+
+    bool hasBeenPrefetched(Addr addr, bool is_secure, RequestorID requestor) const override {
+        panic("hasBeenPrefetched Not implemented");
+        return false;
+    }
+
+    bool hasEverBeenPrefetched(Addr addr, bool is_secure) const override
+    {
+        CacheBlk *block = tags->findBlock(addr, is_secure);
+        if (block) {
+            return block->wasEverPrefetched();
+        } else {
+            return false;
+        }
+    }
+
+    Request::XsMetadata getHitBlkXsMetadata(PacketPtr pkt) override
+    {
+        CacheBlk *block = tags->findBlock(pkt->getAddr(), pkt->isSecure());
+        assert(block);
+        /* clean prefetchSource if the block was not prefetched */
+        if (!block->wasEverPrefetched()) {
+            Request::XsMetadata blkMeta = block->getXsMetadata();
+            blkMeta.prefetchSource = PrefetchSourceType::PF_NONE;
+            block->setXsMetadata(blkMeta);
+        }
+        return block->getXsMetadata();
+    }
+
+    bool inMissQueue(Addr addr, bool is_secure) const override {
+        return mshrQueue.findMatch(addr, is_secure);
+    }
+
+    bool coalesce() const override;
+
+    const uint8_t* findBlock(Addr addr, bool is_secure) const override {
+        auto blk = tags->findBlock(addr, is_secure);
+        return blk ? blk->data: nullptr;
+    }
 };
 
 /**

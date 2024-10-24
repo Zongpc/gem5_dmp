@@ -125,6 +125,8 @@ class DynInst : public ExecContext, public RefCounted
     /** The StaticInst used by this BaseDynInst. */
     const StaticInstPtr staticInst;
 
+    /** the xs metadata for this instruction */
+    const XsDynInstMetaPtr xsMeta;
     /** Pointer to the Impl's CPU object. */
     CPU *cpu = nullptr;
 
@@ -354,6 +356,7 @@ class DynInst : public ExecContext, public RefCounted
     typename LSQUnit::SQIterator sqIt;
 
 
+    int pf_source  = -1; // if load cache line is prefetched
     /////////////////////// TLB Miss //////////////////////
     /**
      * Saved memory request (needed when the DTB address translation is
@@ -999,6 +1002,8 @@ class DynInst : public ExecContext, public RefCounted
     /* Values used by LoadToUse stat */
     Tick firstIssue = -1;
     Tick lastWakeDependents = -1;
+    Tick translatedTick = -1;
+    Tick completionTick = -1;
 
     /** Reads a misc. register, including any side-effects the read
      * might have as defined by the architecture.

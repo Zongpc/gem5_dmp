@@ -52,9 +52,10 @@
 #include "base/compiler.hh"
 #include "base/statistics.hh"
 #include "base/types.hh"
-#include "mem/cache/cache_blk.hh"
+#include "mem/cache/cache_probe_arg.hh"
 #include "mem/packet.hh"
 #include "mem/request.hh"
+#include "sim/arch_db.hh"
 #include "sim/byteswap.hh"
 #include "sim/clocked_object.hh"
 #include "sim/probe/probe.hh"
@@ -62,7 +63,6 @@
 namespace gem5
 {
 
-class BaseCache;
 struct BasePrefetcherParams;
 
 GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
@@ -73,26 +73,25 @@ class Base : public ClockedObject
 {
     class PrefetchListener : public ProbeListenerArgBase<PacketPtr>
     {
-        public:
+      public:
         PrefetchListener(Base &_parent, ProbeManager *pm,
-                        const std::string &name, bool _isFill = false, bool _miss = false,
-                        bool l1_req=false, bool l1_resp=false) 
+                         const std::string &name, bool _isFill = false,
+                         bool _miss = false, bool _pftrain = false)
             : ProbeListenerArgBase(pm, name),
-            parent(_parent), isFill(_isFill), miss(_miss),
-            l1_req(l1_req), l1_resp(l1_resp) {}
+              parent(_parent), isFill(_isFill), miss(_miss), coreDirectNotify(_pftrain) {}
         void notify(const PacketPtr &pkt) override;
-        protected:
-        Base &parent;
+      protected:
+        Base& parent;
         const bool isFill;
         const bool miss;
 
-        const bool l1_req;
-        const bool l1_resp;
+        // Core can directly pass address to train or trigger prefetchers, for example, store prefetch
+        const bool coreDirectNotify;
     };
 
     std::vector<PrefetchListener *> listeners;
 
-    public:
+  public:
 
     /**
      * Class containing the information needed by the prefetch to train and
@@ -118,38 +117,26 @@ class Base : public ClockedObject
         Addr paddress;
         /** Whether this event comes from a cache miss */
         bool cacheMiss;
-
-        bool insert_MSHR = false;
-        Tick Cur_tick = 0;
-        bool is_cache_hit;
-
-        /** ContexID of the pc */
-        ContextID cID;
         /** Pointer to the associated request data */
         uint8_t *data;
-        /** Whether this prefech fill generates new prefetch */
-        bool fill_trigger;
-        /** Whether this event is a pointer */
-        bool is_pointer;
+        /** XiangShan metadata of the block*/
+        Request::XsMetadata xsMetadata;
 
+        bool reqAfterSquash{false};
 
+        bool everPrefetched{false};
 
+        bool pfFirstHit{false};
 
-        public:
+        bool pfHit{false};
 
-        bool getInsertMSHR() const
-        {
-            return insert_MSHR;
-        }
+        bool storePFTrain{ false };
 
-        Tick getCurTick() const
-        {
-            return Cur_tick;
-        }
+        uint64_t *data_ptr;
 
-        bool getCacheHit() const
-        {
-            return is_cache_hit;
+      public:
+        uint64_t * getDataPtr()const{
+            return data_ptr;
         }
         /**
          * Obtains the address value of this Prefetcher address.
@@ -158,11 +145,6 @@ class Base : public ClockedObject
         Addr getAddr() const
         {
             return address;
-        }
-
-        void setAddr(Addr _addr)
-        {
-            address = _addr;
         }
 
         /**
@@ -193,12 +175,6 @@ class Base : public ClockedObject
             return validPC;
         }
 
-        void setPC(Addr pc_in)
-        {
-            pc = pc_in;
-            validPC = true;
-        }
-
         /**
          * Gets the requestor ID that generated this address
          * @return the requestor ID that generated this address
@@ -219,12 +195,18 @@ class Base : public ClockedObject
 
         /**
          * Checks if the request that caused this prefetch event was a write
-         * request
+         * request come from committed store inst
          * @return true if the request causing this event is a write request
          */
         bool isWrite() const
         {
             return write;
+        }
+
+        // is come from store prefetch train trigger
+        bool isStore() const
+        {
+            return storePFTrain;
         }
 
         /**
@@ -245,20 +227,6 @@ class Base : public ClockedObject
             return cacheMiss;
         }
 
-        ContextID getcID() const
-        {
-            return cID;
-        }
-        
-        bool isFillTrigger() const
-        {
-            return fill_trigger;
-        }
-
-        bool isPointer() const
-        {
-            return is_pointer;
-        }
         /**
          * Gets the associated data of the request triggering the event
          * @param Byte ordering of the stored data
@@ -294,6 +262,46 @@ class Base : public ClockedObject
                 this->isSecure() == pfi.isSecure();
         }
 
+        bool sameAddr(Addr addr, bool isSecure) const
+        {
+            return this->getAddr() == addr &&
+                this->isSecure() == isSecure;
+        }
+
+        Request::XsMetadata getXsMetadata() const
+        {
+            return xsMetadata;
+        }
+
+        void setXsMetadata(const Request::XsMetadata &xs_metadata)
+        {
+            this->xsMetadata = xs_metadata;
+        }
+
+        bool isReqAfterSquash() const
+        {
+            return reqAfterSquash;
+        }
+
+        void setReqAfterSquash(bool req_after_squash)
+        {
+            reqAfterSquash = req_after_squash;
+        }
+
+        bool isEverPrefetched() const { return everPrefetched; }
+
+        void setEverPrefetched(bool prefetched) { everPrefetched = prefetched; }
+
+        bool isPfHit() const { return pfHit; }
+
+        void setPfHit(bool hit) { pfHit = hit; }
+
+        bool isPfFirstHit() const { return pfFirstHit; }
+
+        void setPfFirstHit(bool hit) { pfFirstHit = hit; }
+
+        void setStorePftrain(bool s) { storePFTrain = s; }
+
         /**
          * Constructs a PrefetchInfo using a PacketPtr.
          * @param pkt PacketPtr used to generate the PrefetchInfo
@@ -303,6 +311,8 @@ class Base : public ClockedObject
          */
         PrefetchInfo(PacketPtr pkt, Addr addr, bool miss);
 
+        PrefetchInfo(PacketPtr pkt, Addr addr, bool miss, Request::XsMetadata xsMeta);
+
         /**
          * Constructs a PrefetchInfo using a new address value and
          * another PrefetchInfo as a reference.
@@ -311,26 +321,30 @@ class Base : public ClockedObject
          */
         PrefetchInfo(PrefetchInfo const &pfi, Addr addr);
 
-        /**
-         * Fake PrefetchInfo in order to triggering prefetch 
-         * by cache refill
-         */
-        PrefetchInfo(Addr addr, Addr pc, RequestorID requestorID, ContextID cID);
-
-        PrefetchInfo(Addr addr, Addr pc, RequestorID requestorID, ContextID cID, bool is_pointer_in);
-
         ~PrefetchInfo()
         {
             delete[] data;
         }
+
+        bool lastPfLate{false};
     };
 
   protected:
 
+    bool isSubPrefetcher;
+
+    ArchDBer* archDBer;
+
     // PARAMETERS
 
     /** Pointr to the parent cache. */
-    BaseCache* cache;
+    CacheAccessor* cache = nullptr;
+
+    /** Pointer to the parent system. */
+    System* system = nullptr;
+
+    /** Pointer to the parent cache's probe manager. */
+    ProbeManager *probeManager = nullptr;
 
     /** The block size of the parent cache. */
     unsigned blkSize;
@@ -381,6 +395,7 @@ class Base : public ClockedObject
     bool inMissQueue(Addr addr, bool is_secure) const;
 
     bool hasBeenPrefetched(Addr addr, bool is_secure) const;
+    bool hasEverBeenPrefetched(Addr addr, bool is_secure) const;
 
     /** Determine if addresses are on the same page */
     bool samePage(Addr a, Addr b) const;
@@ -397,69 +412,53 @@ class Base : public ClockedObject
     struct StatGroup : public statistics::Group
     {
         StatGroup(statistics::Group *parent);
-        void regStatsPerPC(const std::vector<Addr> &stats_pc_list);
-
         statistics::Scalar demandMshrMisses;
-        statistics::Vector demandMshrMissesPerPC;
-        statistics::Scalar demandMshrHitsAtPf;
-        statistics::Vector demandMshrHitsAtPfPerPfPC;
         statistics::Scalar pfIssued;
-        statistics::Vector pfIssuedPerPfPC;
+        statistics::Vector pfIssued_srcs;
+
+        statistics::Scalar pfOffloaded;
+        statistics::Scalar pfaheadOffloaded;
+        statistics::Scalar pfaheadProcess;
+
         /** The number of times a HW-prefetched block is evicted w/o
          * reference. */
         statistics::Scalar pfUnused;
-        statistics::Vector pfUnusedPerPfPC;
+        statistics::Vector pfUnused_srcs;
         /** The number of times a HW-prefetch is useful. */
         statistics::Scalar pfUseful;
-        statistics::Vector pfUsefulPerPfPC;
+
+        statistics::Vector pfUseful_srcs;
+        statistics::Vector pfHitInCache_srcs;
+        statistics::Vector pfHitInMSHR_srcs;
+        statistics::Vector pfHitInWB_srcs;
+        statistics::Vector late_srcs;
         /** The number of times there is a hit on prefetch but cache block
          * is not in an usable state */
         statistics::Scalar pfUsefulButMiss;
-        // statistics::Formula accuracy;
-        // statistics::Formula accuracyPerPC;
-        // statistics::Formula timely_accuracy;
-        // statistics::Formula timely_accuracy_perPfPC;
-        // statistics::Formula coverage;
-        // statistics::Formula coveragePerPC;
-        statistics::Formula pf_cosumed;
-        statistics::Formula pf_cosumed_perPfPC;
-        statistics::Formula pf_effective;
-        statistics::Formula pf_effective_perPfPC;
-        statistics::Formula pf_timely;
-        statistics::Formula pf_timely_perPfPC;
-        statistics::Formula accuracy_cache;
-        statistics::Formula accuracy_cache_perPfPC;
-        statistics::Formula accuracy_prefetcher;
-        statistics::Formula accuracy_prefetcher_perPfPC;
+        statistics::Formula accuracy;
+        statistics::Formula coverage;
 
         /** The number of times a HW-prefetch hits in cache. */
         statistics::Scalar pfHitInCache;
-        statistics::Vector pfHitInCachePerPfPC;
 
         /** The number of times a HW-prefetch hits in a MSHR. */
         statistics::Scalar pfHitInMSHR;
-        statistics::Vector pfHitInMSHRPerPfPC;
 
         /** The number of times a HW-prefetch hits
          * in the Write Buffer (WB). */
         statistics::Scalar pfHitInWB;
-        statistics::Vector pfHitInWBPerPfPC;
 
         /** The number of times a HW-prefetch is late
          * (hit in cache, MSHR, WB). */
         statistics::Formula pfLate;
-        statistics::Formula pfLatePerPfPC;
-
-        statistics::Formula pfLateRate;
-        statistics::Formula pfLateRatePerPfPC;
     } prefetchStats;
-
-    std::vector<Addr> stats_pc_list;
 
     /** Total prefetches issued */
     uint64_t issuedPrefetches;
     /** Total prefetches that has been useful */
     uint64_t usefulPrefetches;
+
+    uint64_t streamlatenum;
 
     /** Registered tlb for address translations */
     BaseTLB * tlb;
@@ -468,7 +467,7 @@ class Base : public ClockedObject
     Base(const BasePrefetcherParams &p);
     virtual ~Base() = default;
 
-    virtual void setCache(BaseCache *_cache);
+    virtual void setParentInfo(System *sys, ProbeManager *pm, CacheAccessor* _cache, unsigned blk_size);
 
     /**
      * Notify prefetcher of cache access (may be any access or just
@@ -477,119 +476,50 @@ class Base : public ClockedObject
     virtual void notify(const PacketPtr &pkt, const PrefetchInfo &pfi) = 0;
 
     /** Notify prefetcher of cache fill */
-    virtual void notifyFill(const PacketPtr &pkt) {}
-    virtual void notifyFill(const PacketPtr &pkt, const u_int8_t* data_ptr) {}
-
-    // Probe AddrReq to L1 for prefetch detection
-    virtual void notifyL1Req(const PacketPtr &pkt) {}
-    // Probe DataResp from L1 for prefetch detection
-    virtual void notifyL1Resp(const PacketPtr &pkt) {}
+    virtual void notifyFill(const PacketPtr &pkt)
+    {}
 
     virtual PacketPtr getPacket() = 0;
 
     virtual Tick nextPrefetchReadyTime() const = 0;
-    
-    virtual void hitTrigger(Addr pc, Addr addr, const uint8_t* data_ptr, bool from_access) {};
-
-    virtual void dmdCatchPfHook(Addr pc) {};// 可以注释取消对于前瞻度的auto调整
-
-    virtual void pfReplaceHook(Addr pc) {};//可以注释取消对于前瞻度的auto调整
-
-    void prefetchHit(PacketPtr pkt, bool miss);
 
     void
-    prefetchUnused(Addr pc)
+    prefetchUnused(PrefetchSourceType pfSource)
     {
-        // pfReplaceHook(pc);
-
         prefetchStats.pfUnused++;
-
-        if (pc != MaxAddr) {
-            for (int i = 0; i < stats_pc_list.size(); i++) {
-                if (pc == stats_pc_list[i]) {
-                    prefetchStats.pfUnusedPerPfPC[i]++;
-                    break;
-                }
-            }
-        }
-    }
-
-    void incrDemandMshrHitsAtPf(Addr pc)
-    {
-        // dmdCatchPfHook(pc);
-
-        prefetchStats.demandMshrHitsAtPf++;
-
-        if (pc != MaxAddr) {
-            for (int i = 0; i < stats_pc_list.size(); i++) {
-                if (pc == stats_pc_list[i]) {
-                    prefetchStats.demandMshrHitsAtPfPerPfPC[i]++;
-                    break;
-                }
-            }
-        }
+        prefetchStats.pfUnused_srcs[pfSource]++;
     }
 
     void
-    incrDemandMshrMisses(PacketPtr pkt)
+    incrDemandMhsrMisses()
     {
         prefetchStats.demandMshrMisses++;
-
-        if (pkt->req->hasPC()) {
-            Addr req_pc = pkt->req->getPC();
-            for (int i = 0; i < stats_pc_list.size(); i++) {
-                if (req_pc == stats_pc_list[i]) {
-                    prefetchStats.demandMshrMissesPerPC[i]++;
-                    break;
-                }
-            }
-        }
     }
 
     void
-    pfHitInCache(PacketPtr pkt)
+    pfHitInCache(PrefetchSourceType pf_type)
     {
         prefetchStats.pfHitInCache++;
-        if (pkt->req->hasPC()) {
-            Addr req_pc = pkt->req->getPC();
-            for (int i = 0; i < stats_pc_list.size(); i++) {
-                if (req_pc == stats_pc_list[i]) {
-                    prefetchStats.pfHitInCachePerPfPC[i]++;
-                    break;
-                }
-            }
-        }
+        prefetchStats.pfHitInCache_srcs[pf_type]++;
+        prefetchStats.late_srcs[pf_type]++;
     }
 
     void
-    pfHitInMSHR(PacketPtr pkt)
+    pfHitInMSHR(PrefetchSourceType pf_type)
     {
         prefetchStats.pfHitInMSHR++;
-        if (pkt->req->hasPC()) {
-            Addr req_pc = pkt->req->getPC();
-            for (int i = 0; i < stats_pc_list.size(); i++) {
-                if (req_pc == stats_pc_list[i]) {
-                    prefetchStats.pfHitInMSHRPerPfPC[i]++;
-                    break;
-                }
-            }
-        }
+        prefetchStats.pfHitInMSHR_srcs[pf_type]++;
+        prefetchStats.late_srcs[pf_type]++;
     }
 
     void
-    pfHitInWB(PacketPtr pkt)
+    pfHitInWB(PrefetchSourceType pf_type)
     {
         prefetchStats.pfHitInWB++;
-        if (pkt->req->hasPC()) {
-            Addr req_pc = pkt->req->getPC();
-            for (int i = 0; i < stats_pc_list.size(); i++) {
-                if (req_pc == stats_pc_list[i]) {
-                    prefetchStats.pfHitInWBPerPfPC[i]++;
-                    break;
-                }
-            }
-        }
+        prefetchStats.pfHitInWB_srcs[pf_type]++;
+        prefetchStats.late_srcs[pf_type]++;
     }
+    void streamPflate() { streamlatenum++; }
 
     /**
      * Register probe points for this object.
@@ -601,17 +531,16 @@ class Base : public ClockedObject
      * @param pkt The memory request causing the event
      * @param miss whether this event comes from a cache miss
      */
-    void probeNotify(const PacketPtr &pkt, bool miss);
+    void probeNotify(const PacketPtr& pkt, bool miss);
+
+    void coreDirectAddrNotify(const PacketPtr& pkt);
 
     /**
      * Add a SimObject and a probe name to listen events from
      * @param obj The SimObject pointer to listen from
      * @param name The probe name
      */
-    // void addEventProbe(SimObject *obj, const char *name);
-
-    void addEventProbe(SimObject *obj, const char *name, bool isFill, bool isMiss, 
-                         bool l1_req, bool l1_resp);
+    void addEventProbe(SimObject *obj, const char *name);
 
     /**
      * Add a BaseTLB object to be used whenever a translation is needed.
@@ -619,7 +548,36 @@ class Base : public ClockedObject
      * page crossing references and/or uses virtual addresses for training.
      * @param tlb pointer to the BaseTLB object to add
      */
-    void addTLB(BaseTLB *tlb);
+    virtual void addTLB(BaseTLB *tlb);
+
+  protected:
+    Base *hintDownStream{nullptr};
+
+    bool squashMark{false};
+
+  public:
+    virtual void addHintDownStream(Base* down_stream)
+    {
+        hintDownStream = down_stream;
+    }
+    virtual void rxHint(BaseMMU::Translation *dpp) = 0;
+
+    virtual void notifyIns(int ins_num){}
+
+    virtual std::pair<long, long> rxMembusRatio(RequestorID requestorId) {return std::pair<long, long>(0,0);};
+
+    void nofityHitToDownStream(const PacketPtr &pkt);
+
+    virtual void pfHitNotify(float accuracy, PrefetchSourceType pf_source, const PacketPtr &pkt) = 0;
+
+    bool hasHintDownStream() const
+    {
+        return hintDownStream != nullptr;
+    }
+
+    virtual void offloadToDownStream() { panic("offloadToDownStream() not implemented"); }
+
+    virtual bool hasHintsWaiting() { return false; }
 };
 
 } // namespace prefetch

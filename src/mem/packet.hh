@@ -148,6 +148,7 @@ class MemCmd
         HTMAbort,
         // Tlb shootdown
         TlbiExtSync,
+        StorePFTrain,
         NUM_MEM_CMDS
     };
 
@@ -263,7 +264,8 @@ class MemCmd
     {
         return (cmd == ReadReq || cmd == WriteReq ||
                 cmd == WriteLineReq || cmd == ReadExReq ||
-                cmd == ReadCleanReq || cmd == ReadSharedReq);
+                cmd == ReadCleanReq || cmd == ReadSharedReq ||
+                cmd == StorePFTrain);
     }
 
     Command
@@ -299,7 +301,6 @@ class Packet : public Printable
     typedef uint32_t FlagsType;
     typedef gem5::Flags<FlagsType> Flags;
 
-    private:
     enum : FlagsType
     {
         // Flags to transfer across when copying a packet
@@ -655,6 +656,7 @@ class Packet : public Printable
     /// Return the index of this command.
     inline int cmdToIndex() const { return cmd.toInt(); }
 
+    bool isStorePFTrain() const     { return cmd == MemCmd::StorePFTrain;  }
     bool isRead() const              { return cmd.isRead(); }
     bool isWrite() const             { return cmd.isWrite(); }
     bool isDemand() const            { return cmd.isDemand(); }
@@ -732,6 +734,15 @@ class Packet : public Printable
         assert(isRequest());
         assert(!flags.isSet(CACHE_RESPONDING));
         flags.set(CACHE_RESPONDING);
+    }
+    uint64_t promisingResponder{0};
+    void setCacheRespondingBy(uint64_t by)
+    {
+        promisingResponder = by;
+    }
+    uint64_t getCacheRespondingBy()
+    {
+        return promisingResponder;
     }
     bool cacheResponding() const { return flags.isSet(CACHE_RESPONDING); }
     /**
@@ -1179,6 +1190,12 @@ class Packet : public Printable
         } else
             // 默认情况下生成普通写请求
             return MemCmd::WriteReq;
+    }
+    
+    static MemCmd
+    makePFtrainCmd(const RequestPtr& req) {
+        assert(req->isStorePFTrain());
+        return MemCmd::StorePFTrain;
     }
 
     /**
@@ -1691,6 +1708,19 @@ class Packet : public Printable
 
     /** Check if a packet has valid data */
     bool validData() const;
+    
+    bool missOnLatePf{false};
+
+    bool coalescingMSHR{false};
+
+    int pfSource{PrefetchSourceType::PF_NONE};
+
+    int pfDepth = 0;
+
+    bool fromBOP() const { return pfSource == PrefetchSourceType::HWP_BOP; }
+    
+    PrefetchSourceType getPFSource() const { return static_cast<PrefetchSourceType>(pfSource); }
+    int getPFDepth() const { return pfDepth; }
 };
 
 } // namespace gem5

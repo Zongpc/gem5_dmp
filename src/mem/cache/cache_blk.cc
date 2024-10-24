@@ -69,6 +69,18 @@ CacheBlk::insert(const Addr tag, const bool is_secure,
 }
 
 void
+CacheBlk::insert(const Addr tag, const bool is_secure,
+                 const int src_requestor_ID, const uint32_t task_ID,
+                 const Request::XsMetadata &xs_metadata)
+{
+    insert(tag, is_secure, src_requestor_ID, task_ID);
+
+    // Set extended XS metadata
+    setXsMetadata(xs_metadata);
+}
+
+
+void
 CacheBlkPrintWrapper::print(std::ostream &os, int verbosity,
                             const std::string &prefix) const
 {
