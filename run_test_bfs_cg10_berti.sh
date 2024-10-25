@@ -22,13 +22,13 @@ for r in "${r_values[@]}"; do
         fi
 
         # 定义第一个指令
-        first_command="build/ARM/gem5.opt --outdir=./m5out/${r}_${p} --debug-flags=HWPrefetch \
+        first_command="build/ARM/gem5.opt --outdir=./m5out/${r}_${p} --debug-flags=HWPrefetch,Bertidebug \
         configs/dmp_pf/fs_L2.py --num-cpus 1 --cpu-clock 2.5GHz --cpu-type O3_ARM_v7a_3 \
         --caches --l2cache --l1i_assoc 8 --l1d_assoc 8 --l2_assoc 4 --l2_mshr_num 32 \
         --l2_repl_policy LRURP --l1d-hwp-type ${p} \
         --mem-type SimpleMemory --mem-size 8GB --kernel=/home/zongpc/work/qiang/os/binaries/vmlinux.arm64 \
         --bootloader=/home/zongpc/work/qiang/os/binaries/boot.arm64 --disk-image=/home/zongpc/work/qiang/os/ubuntu-18.04-arm64-docker.img \
-        --script=./mount_target/${r}.rcS \
+        --script=./mount_target/${r}.rcS --checkpoint-dir=./m5out/${r}_${p}\
         "
         #--checkpoint-dir=./m5out/${r} "
 
@@ -50,8 +50,8 @@ for r in "${r_values[@]}"; do
         fi
 
         # 移动并重命名 stats.txt 文件
-        mv "m5out/stats.txt" "m5out/${r}_${p}/stats.txt"
-        mv "m5out/system.terminal" "m5out/${r}_${p}/system.terminal"
+        #mv "m5out/stats.txt" "m5out/${r}_${p}/stats.txt"
+        #mv "m5out/system.terminal" "m5out/${r}_${p}/system.terminal"
     done
 done
 

@@ -119,6 +119,7 @@ class Queue : public Drainable, public Named
     /** The number of entries that are in service. */
     int _numInService;
 
+  public:
     /** The number of currently allocated entries. */
     int allocated;
 

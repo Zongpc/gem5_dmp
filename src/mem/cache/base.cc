@@ -53,6 +53,7 @@
 #include "debug/CacheRepl.hh"
 #include "debug/CacheVerbose.hh"
 #include "debug/HWPrefetch.hh"
+#include "debug/Bertidebug.hh"
 #include "debug/RequestSlot.hh"
 #include "mem/cache/compressors/base.hh"
 #include "mem/cache/mshr.hh"
@@ -114,7 +115,8 @@ BaseCache::BaseCache(const BaseCacheParams &p, unsigned blk_size)
         missCount(p.max_miss_count), // 缺失计数
         addrRanges(p.addr_ranges.begin(), p.addr_ranges.end()), // 地址范围
         system(p.system), // 系统
-        stats(*this) // 统计数据
+        stats(*this),
+        event([this]{processEvent();},name())
 {
     // MSHR队列没有预留条目，因为我们在每次分配时都会检查MSHR队列
     // 而写队列的预留条目数量与MSHR的数量相同，因为每个MSHR最终可能需要写回
@@ -146,6 +148,26 @@ BaseCache::BaseCache(const BaseCacheParams &p, unsigned blk_size)
     if (!p.stats_pc_list.empty()) {
         stats_pc_list = p.stats_pc_list;
     }
+}
+
+void
+BaseCache::processEvent()
+{
+    int num;
+    num = mshrQueue.allocated;
+
+    if(num > 0){
+        stats.overallmshrservices += num;
+        stats.overallmshrcycles++;
+    }
+
+    schedule(event,curTick()+400);
+}
+
+void 
+BaseCache::startup()
+{
+    schedule(event,1010);
 }
 
 BaseCache::~BaseCache()
@@ -1120,6 +1142,7 @@ BaseCache::getNextQueueEntry()
     if (prefetcher && mshrQueue.canPrefetch() && !isBlocked()) {
         // If we have a miss queue slot, we can try a prefetch
         PacketPtr pkt = prefetcher->getPacket();
+        Tick cur_tick = curTick();
         if (pkt) {
             Addr pf_addr = pkt->getBlockAddr(blkSize);
             if (tags->findBlock(pf_addr, pkt->isSecure())) {
@@ -2673,6 +2696,10 @@ BaseCache::CacheStats::CacheStats(BaseCache &c)
              "number of data expansions"),
     ADD_STAT(dataContractions, statistics::units::Count::get(),
              "number of data contractions"),
+    ADD_STAT(overallmshrcycles, statistics::units::Count::get(),
+             "number of cycles when mshr is not empty"),
+    ADD_STAT(overallmshrservices, statistics::units::Count::get(),
+             "number of services when mshr is not empty"),
     cmd(MemCmd::NUM_MEM_CMDS)
 {
     for (int idx = 0; idx < MemCmd::NUM_MEM_CMDS; ++idx)
@@ -2951,6 +2978,9 @@ BaseCache::CacheStats::regStats()
 
     dataExpansions.flags(nozero | nonan);
     dataContractions.flags(nozero | nonan);
+	
+	overallmshrcycles.flags(nozero);
+    overallmshrservices.flags(nozero);
 
     hitsAtPfCoverAccess.flags(total | nozero | nonan);
     hitsAtPfCoverAccess = demandHitsAtPf / demandAccesses;

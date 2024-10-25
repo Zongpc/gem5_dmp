@@ -44,8 +44,8 @@
  * Describes a strided prefetcher.
  */
 
-#ifndef __MEM_CACHE_PREFETCH_STRIDE_HH__
-#define __MEM_CACHE_PREFETCH_STRIDE_HH__
+#ifndef __MEM_CACHE_PREFETCH_BERTI_HH__
+#define __MEM_CACHE_PREFETCH_BERTI_HH__
 
 #include <string>
 #include <unordered_map>

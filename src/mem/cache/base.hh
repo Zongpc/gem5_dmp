@@ -104,6 +104,12 @@ class BaseCache : public ClockedObject
         MSHRQueue_WriteBuffer
     };
 
+  private:
+    EventFunctionWrapper event;
+    void processEvent();
+  public:
+    void startup();
+
     public:
     /**
      * Reasons for caches to be blocked.
@@ -1192,6 +1198,12 @@ class BaseCache : public ClockedObject
 
         /** Number of prefetch hits */
         statistics::Scalar prefetchHits;
+	
+        /** Number of cycles when MSHR is not empty*/
+        statistics::Scalar overallmshrcycles;
+
+        /** Number of services when MSHR is not empty*/
+        statistics::Scalar overallmshrservices;
 
         /** Number of data expansions. */
         statistics::Scalar dataExpansions;
@@ -1234,6 +1246,8 @@ class BaseCache : public ClockedObject
 
     MSHR *allocateMissBuffer(PacketPtr pkt, Tick time, bool sched_send = true)
     {
+        pkt->setInsertMSHR();
+        pkt->setCurTick(curTick());
         MSHR *mshr = mshrQueue.allocate(pkt->getBlockAddr(blkSize), blkSize,
                                         pkt, time, order++,
                                         allocOnFill(pkt->cmd));

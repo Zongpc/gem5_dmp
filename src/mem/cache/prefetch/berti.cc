@@ -52,6 +52,7 @@
 #include "base/logging.hh"
 #include "base/random.hh"
 #include "base/trace.hh"
+#include "debug/Bertidebug.hh"
 #include "debug/HWPrefetch.hh"
 #include "mem/cache/prefetch/associative_set_impl.hh"
 #include "mem/cache/replacement_policies/base.hh"
@@ -137,7 +138,7 @@ namespace gem5
                                                                                      HistoryTableInfo.indexingPolicy, HistoryTableInfo.replacementPolicy)));
             // ,HistoryEntry(initConfidence))));
 
-            DPRINTF(HWPrefetch, "Adding context %i with stride entries\n", context);
+            DPRINTF(Bertidebug, "Adding context %i with stride entries\n", context);
 
             // Get iterator to new pc table, and then return a pointer to the new table
             return &(insertion_result.first->second);
@@ -164,7 +165,7 @@ namespace gem5
                                                                                  DeltaTableInfo.indexingPolicy, DeltaTableInfo.replacementPolicy)));
             // ,HistoryEntry(initConfidence))));
 
-            DPRINTF(HWPrefetch, "Adding context %i with stride entries\n", context);
+            DPRINTF(Bertidebug, "Adding context %i with stride entries\n", context);
 
             // Get iterator to new pc table, and then return a pointer to the new table
             return &(insertion_result.first->second);
@@ -176,9 +177,10 @@ namespace gem5
         {
             if (!pfi.hasPC())
             {
-                DPRINTF(HWPrefetch, "Ignoring request with no PC.\n");
+                DPRINTF(Bertidebug, "Ignoring request with no PC.\n");
                 return;
             }
+            DPRINTF(Bertidebug, "zongpc0.\n");
 
             // Get required packet info
             Addr pf_addr = pfi.getAddr();
@@ -191,13 +193,14 @@ namespace gem5
             if (pfi.getInsertMSHR())
             {
                 // printf("pc : %#x , addr : %#x , get insert MSHR\n", pc, pf_addr);
+                DPRINTF(Bertidebug, "berti: pc : %#x , addr : %#x , get insert MSHR\n", pc, pf_addr);
                 HistoryTable *history_table = findHistoryTable(requestor_id);
                 HistoryEntry *history_entry = history_table->findEntry(pc, is_secure);
                 if (history_entry != nullptr)
                 { // find HistoryEntry
                     if (history_entry->history_set_num <= 16)
                     { // berti records 16 ways for the same pc
-                        (history_entry->history_set_num == 16) ?: history_entry->history_set_num++;
+                        (history_entry->history_set_num == 16) ? true : history_entry->history_set_num++;
                         for (int i = history_entry->history_set_num - 1; i > 0; i--)
                         {
                             history_entry->history_sets[i].line_address =
@@ -225,6 +228,7 @@ namespace gem5
             // update Delta Table when there is a cache hit
             if (pfi.getCacheHit())
             {
+                DPRINTF(Bertidebug, "berti: pc : %#x , addr : %#x , get cache hit\n", pc, pf_addr);
                 // printf("pc : %#x , addr : %#x , get cache hit\n", pc, pf_addr);
                 DeltaTable *delta_table = findDeltaTable(requestorId);
                 DeltaEntry *delta_entry = delta_table->findEntry(pc, is_secure);
@@ -232,7 +236,7 @@ namespace gem5
                 {
                     if (delta_entry->access_array_num <= 16) // record at max 16 access arrays , same as Berti
                     {
-                        (delta_entry->access_array_num == 16) ?: delta_entry->access_array_num++;
+                        (delta_entry->access_array_num == 16) ? true : delta_entry->access_array_num++;
                         for (int i = delta_entry->access_array_num - 1; i > 0; i--)
                         {
                             delta_entry->access_arrays[i].line_address =
@@ -256,13 +260,16 @@ namespace gem5
                             {
                                 if (history_entry->history_sets[i].line_address == pf_addr)
                                 {
+                                    DPRINTF(Bertidebug, "berti: pc : %#x , addr : %#x , delta_array_num : %d history hit pf_addr\n", pc, pf_addr,delta_entry->delta_array_num);
                                     for (int j = 0; j < delta_entry->access_array_num; j++)
                                     {
                                         if (delta_entry->access_arrays[j].access_tick < history_entry->history_sets[i].timestamp)
                                         {
                                             int delta = - delta_entry->access_arrays[j].line_address + history_entry->history_sets[i].line_address;
+                                            DPRINTF(Bertidebug, "berti: pc : %#x , addr : %#x , delta_array_num : %d , delta : %d , calc delta\n", pc, pf_addr,delta_entry->delta_array_num,delta);
                                             if (!delta)
                                                 continue;
+                                            DPRINTF(Bertidebug, "berti: pc : %#x , addr : %#x , delta_array_num : %d , delta : %d , calc delta check pass\n", pc, pf_addr,delta_entry->delta_array_num,delta);
                                             for (int k = 0; k < delta_entry->delta_array_num; k++)
                                             {
                                                 // match in delta_arrays
@@ -301,7 +308,8 @@ namespace gem5
                                                     }
                                                 }
                                             }
-                                            (delta_entry->delta_array_num == 16) ?: delta_entry->delta_array_num++;
+                                            DPRINTF(Bertidebug, "berti: pc : %#x , addr : %#x , delta_array_num : %d will add\n", pc, pf_addr,delta_entry->delta_array_num);
+                                            (delta_entry->delta_array_num == 16) ? true : delta_entry->delta_array_num++;
                                             delta_entry->counter++;
                                             // calculate the most possible delta
                                             if (delta_entry->counter >= 16)
@@ -330,8 +338,9 @@ namespace gem5
                             }
                         }
                     }
-                    else
-                        delta_entry->delta_array_num = 0; // exception
+                    else {
+                        DPRINTF(Bertidebug, "berti: pc : %#x , addr : %#x , delta_array_num : %d set to zero\n", pc, pf_addr,delta_entry->delta_array_num);
+                        delta_entry->delta_array_num = 0;} // exception 
                 }
                 else
                 {
@@ -347,8 +356,10 @@ namespace gem5
             DeltaTable *delta_table = findDeltaTable(requestorId);
             DeltaEntry *delta_entry = delta_table->findEntry(pc, is_secure);
             if (delta_entry != nullptr){
+                DPRINTF(Bertidebug, "berti: pc : %#x , addr : %#x , delta_array_num : %d delta_entry found\n", pc, pf_addr,delta_entry->delta_array_num);
                 for (int i = 0; i < delta_entry->delta_array_num; i++)
                 {
+                    DPRINTF(Bertidebug, "berti: pc : %#x , addr : %#x , delta_array[%d].status : %d over zero\n", pc, pf_addr,i,delta_entry->delta_arrays[i].status);
                     if (delta_entry->delta_arrays[i].status == 1)
                     {
                         // for (int d = 1; d <= degree; d++) {
@@ -365,6 +376,7 @@ namespace gem5
                             int prefetch_delta = delta_entry->delta_arrays[i].delta;
                             Addr new_addr = pf_addr + d*prefetch_delta;
                             addresses.push_back(AddrPriority(new_addr, 0));
+                            DPRINTF(Bertidebug, "berti gen prefetch success.\n");
                         }
                     }
                 }

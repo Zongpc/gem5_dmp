@@ -49,8 +49,8 @@ for r in "${r_values[@]}"; do
         fi
 
         # 移动并重命名 stats.txt 文件
-        mv "m5out/stats.txt" "m5out/${r}_${p}/stats.txt"
-        mv "m5out/system.terminal" "m5out/${r}_${p}/system.terminal"
+        #mv "m5out/stats.txt" "m5out/${r}_${p}/stats.txt"
+        #mv "m5out/system.terminal" "m5out/${r}_${p}/system.terminal"
     done
 done
 

@@ -6,7 +6,7 @@
 r_values=("graph_bfs_cg10")
 
 # Prefetcher选择器
-pf_values=("IPClassifierBasedL1Prefetcher")
+pf_values=("IPCPrefetcher")
 
 # 遍历 r_values 数组并执行命令
 for r in "${r_values[@]}"; do
