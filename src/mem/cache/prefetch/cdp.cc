@@ -105,11 +105,13 @@ CDP::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addre
     int pf_depth = pfi.getXsMetadata().prefetchDepth;
     bool is_prefetch =
         system->getRequestorName(pfi.getRequestorId()).find("dcache.prefetcher") != std::string::npos;
+    DPRINTF(CDPdepth, "CDP: dataptr:%#llx, nullptr:%#llx , equal:%d , miss:%d \n", pfi.getDataPtr(), nullptr, pfi.getDataPtr()==nullptr, miss);
     if (!miss && pfi.getDataPtr() != nullptr) {
         if (is_prefetch && enable_prf_filter[pf_source]) {
+            DPRINTF(CDPdepth, "CDP: HIT but return is_prefetch: %d, prf_filter : %d\n", is_prefetch , enable_prf_filter[pf_source]);
             return;
         }
-        DPRINTF(CDPdepth, "HIT Depth: %d\n", pfi.getXsMetadata().prefetchDepth);
+        DPRINTF(CDPdepth, "CDP: HIT Depth: %d\n", pfi.getXsMetadata().prefetchDepth);
         if (((pf_depth == 4 || pf_depth == 2))) {
             uint64_t *test_addrs = pfi.getDataPtr();
             std::queue<std::pair<CacheBlk *, Addr>> pt_blks;
@@ -142,7 +144,7 @@ CDP::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addre
         }
     } else if (miss) {
         cdpStats.missNotifyCalled++;
-        DPRINTF(CDPUseful, "Miss addr: %#llx\n", addr);
+        DPRINTF(CDPUseful, "CDP: Miss addr: %#llx\n", addr);
     }
     if (!is_prefetch) {
         addToVpnTable(pfi.getAddr());
@@ -166,7 +168,7 @@ CDP::notifyWithData(const PacketPtr &pkt, bool is_l1_use, std::vector<AddrPriori
     uint64_t test_addr = 0;
     std::vector<uint64_t> addrs;
     if (pkt->hasData() && pkt->req->hasVaddr()) {
-        DPRINTF(CDPdebug, "Notify with data received for addr: %#llx, pkt size: %lu\n", pkt->req->getVaddr(),
+        DPRINTF(CDPdebug, "CDP: Notify with data received for addr: %#llx, pkt size: %lu\n", pkt->req->getVaddr(),
                 pkt->getSize());
 
         auto *blk_data = cache->findBlock(pkt->getAddr(), pkt->isSecure());
@@ -228,16 +230,17 @@ CDP::notifyWithData(const PacketPtr &pkt, bool is_l1_use, std::vector<AddrPriori
             } else {
                 enable_thro = false;
             }
+            DPRINTF(CDPdebug, "CDP enable_thro update %d, trueAccuray: %f, membus_ratio: %f, mpki: %d \n",  enable_thro, trueAccuracy, membus_ratio, mpki);
         }
         unsigned sentCount = 0;
         for (int of = 0; of < max_offset; of++) {
             test_addr = addrs[of];
             int align_bit = BITS(test_addr, 1, 0);
-            if (trueAccuracy < 0.05) {
-                align_bit = BITS(test_addr, 10, 0);
-            } else if (trueAccuracy < 0.01) {
-                align_bit = BITS(test_addr, 11, 0);
-            }
+            //if (trueAccuracy < 0.05) {
+            //    align_bit = BITS(test_addr, 10, 0);
+            //} else if (trueAccuracy < 0.01) {
+            //    align_bit = BITS(test_addr, 11, 0);
+            //}
             int filter_bit = BITS(test_addr, 5, 0);
             int page_offset, vpn0, vpn1, vpn1_addr, vpn2, vpn2_addr, check_bit;
             check_bit = BITS(test_addr, 63, 39);
@@ -248,7 +251,9 @@ CDP::notifyWithData(const PacketPtr &pkt, bool is_l1_use, std::vector<AddrPriori
             vpn0 = BITS(test_addr, 20, 12);
             page_offset = BITS(test_addr, 11, 0);
             bool flag = true;
+            DPRINTF(CDPdebug, "CDP Notifywithdata  aarch64, ADDR:%#llx, vpn2:%#llx, vpn1:%#llx, vpn0:%#llx, page offset:%#llx\n", Addr(test_addr), Addr(vpn2), Addr(vpn1), Addr(vpn0), Addr(page_offset));
             if ((check_bit != 0) || (vpn0 == 0) || (align_bit != 0) || (!vpnTable.search(vpn2, vpn1))) {
+                DPRINTF(CDPdebug, "CDP Notifywithdata checkbit !=0 ->(%d), vpn == 0 ->(%d), align_bit !=0 ->(%d), !vpnTable.search ->(%d)\n ", (check_bit != 0),(vpn0 == 0),(align_bit != 0),(!vpnTable.search(vpn2, vpn1)));
                 flag = false;
             }
             Addr test_addr2 = Addr(test_addr);
@@ -306,11 +311,13 @@ CDP::sendPFWithFilter(Addr addr, std::vector<AddrPriority> &addresses, int prio,
                       int pf_depth)
 {
     if (pfLRUFilter->contains((addr))) {
+        DPRINTF(CDPdebug, "CDP sendPFWithFilter failed caused by pfLRUFilter");
         return false;
     } else {
         pfLRUFilter->insert((addr), 0);
         AddrPriority addr_prio = AddrPriority(addr, prio, pfSource);
         addr_prio.depth = pf_depth;
+        DPRINTF(CDPdebug, "CDP sendPFWithFilter success, addr: %#llx , pf_depth: %d" , addr, pf_depth);
         addresses.push_back(addr_prio);
         cdpStats.passedFilter++;
         return true;
@@ -328,7 +335,7 @@ CDP::addToVpnTable(Addr addr)
     page_offset = BITS(addr, 11, 0);
     vpnTable.add(vpn2, vpn1);
     vpnTable.resetConfidence(throttle_aggressiveness, enable_thro);
-    DPRINTF(CDPdebug, "Sv39, ADDR:%#llx, vpn2:%#llx, vpn1:%#llx, vpn0:%#llx, page offset:%#llx\n", addr, Addr(vpn2),
+    DPRINTF(CDPdebug, "CDP: aarch64, ADDR:%#llx, vpn2:%#llx, vpn1:%#llx, vpn0:%#llx, page offset:%#llx\n", addr, Addr(vpn2),
             Addr(vpn1), Addr(vpn0), Addr(page_offset));
 }
 

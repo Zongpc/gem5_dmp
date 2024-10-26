@@ -93,14 +93,17 @@ Base::PrefetchInfo::PrefetchInfo(
     if (!write && miss) {
         data = nullptr;
         data_ptr = nullptr;
+        DPRINTFR(HWPrefetch,"------------ CDP: dataptr assigned when pf is read and miss \n");
     } else if (pkt->isStorePFTrain()) {
         data = nullptr;
         data_ptr = nullptr;
+        DPRINTFR(HWPrefetch,"------------ CDP: dataptr assigned when pf is StorePFTrailn \n");
     } else {
         data = new uint8_t[req_size];
         Addr offset = pkt->req->getPaddr() - pkt->getAddr();
         std::memcpy(data, &(pkt->getConstPtr<uint8_t>()[offset]), req_size);
         data_ptr=(uint64_t*)pkt->getPtr<uint64_t>();
+        DPRINTFR(HWPrefetch,"------------ CDP: else data dataptr:%#llx \n",data_ptr);
     }
 }
 
@@ -116,10 +119,13 @@ void
 Base::PrefetchListener::notify(const PacketPtr &pkt)
 {
     if (coreDirectNotify) {
+        DPRINTFR(HWPrefetch,"------------ CDP: notify is coreDirectNotify \n");
         parent.coreDirectAddrNotify(pkt);
     } else if (isFill) {
+        DPRINTFR(HWPrefetch,"------------ CDP: notify is fill \n");
         parent.notifyFill(pkt);
     } else {
+        DPRINTFR(HWPrefetch,"------------ CDP: notify is miss : %d\n" , miss);
         parent.probeNotify(pkt, miss);
     }
 }
@@ -377,9 +383,11 @@ Base::probeNotify(const PacketPtr &pkt, bool miss)
         if (!miss) {
             pf_source = cache->getHitBlkXsMetadata(pkt).prefetchSource;
             pf_depth = cache->getHitBlkXsMetadata(pkt).prefetchDepth;
+            DPRINTF(HWPrefetch, "ProbeNotify hit: pf_source %d, pf_depth: %d\n",pf_source,pf_depth);
         } else {  // miss & late
             pf_source = pkt->getPFSource();
             pf_depth = pkt->getPFDepth();
+            DPRINTF(HWPrefetch, "ProbeNotify miss: pf_source %d, pf_depth: %d\n",pf_source,pf_depth);
         }
         if (!useVirtualAddresses || pkt->req->hasVaddr()) {
             // condition1:  useVirtualAddresses && pkt->req->hasVaddr()

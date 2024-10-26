@@ -11,24 +11,25 @@ pf_values=("CDP")
 # 遍历 r_values 数组并执行命令
 for r in "${r_values[@]}"; do
     for p in "${pf_values[@]}"; do
-        if [ -d "m5out/${r}_${p}" ]; then
-            if [ -d "m5out/${r}_${p}_bak" ]; then
-                rm -rf m5out/${r}_${p}_bak
-            fi
-            mv m5out/${r}_${p} m5out/${r}_${p}_bak
-            mkdir -p m5out/${r}_${p}
-        else
-            mkdir -p m5out/${r}_${p}
-        fi
+        #if [ -d "m5out/${r}_${p}" ]; then
+        #    if [ -d "m5out/${r}_${p}_bak" ]; then
+        #        rm -rf m5out/${r}_${p}_bak
+        #    fi
+        #    mv m5out/${r}_${p} m5out/${r}_${p}_bak
+        #    mkdir -p m5out/${r}_${p}
+        #else
+        #    mkdir -p m5out/${r}_${p}
+        #fi
 
         # 定义第一个指令
-        first_command="build/ARM/gem5.opt --outdir=./m5out/${r}_${p} --debug-flags=HWPrefetch \
+        first_command="build/ARM/gem5.opt --outdir=./m5out/${r}_${p} --debug-flags=HWPrefetch,CDPUseful,CDPdebug,CDPdepth\
         configs/dmp_pf/fs_L2.py --num-cpus 1 --cpu-clock 2.5GHz --cpu-type O3_ARM_v7a_3 \
         --caches --l2cache --l1i_assoc 8 --l1d_assoc 8 --l2_assoc 4 --l2_mshr_num 32 \
-        --l2_repl_policy LRURP --l1d-hwp-type ${p} \
+        --l2_repl_policy LRURP --l1d-hwp-type L2CompositeWithWorkerPrefetcher \
         --mem-type SimpleMemory --mem-size 8GB --kernel=/home/zongpc/work/qiang/os/binaries/vmlinux.arm64 \
         --bootloader=/home/zongpc/work/qiang/os/binaries/boot.arm64 --disk-image=/home/zongpc/work/qiang/os/ubuntu-18.04-arm64-docker.img \
-        --script=./mount_target/${r}.rcS \
+        --script=./mount_target/${r}.rcS --checkpoint-dir=./m5out/${r}_${p}\
+        -r 1 --restore-with-cpu=O3_ARM_v7a_3
         "
         #--checkpoint-dir=./m5out/${r} "
 

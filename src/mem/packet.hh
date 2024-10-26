@@ -378,6 +378,10 @@ class Packet : public Printable
 
     Flags flags;
 
+  private:
+    /// A flag to indicate that the packet needs to send right away
+    bool sendRightAway = false;
+    bool retriedPkt = false;
     public:
     bool insert_MSHR = false;
 
@@ -615,6 +619,7 @@ class Packet : public Printable
     /*
     将新的发送者状态推送到数据包中，并将当前的发送者状态设置为新状态的前任。这应优于直接操作 senderState 成员变量。*/
     void pushSenderState(SenderState *sender_state);
+    SenderState *getPrimarySenderState() const;
 
     /**
      * Pop the top of the state stack and return a pointer to it. This
@@ -953,6 +958,26 @@ class Packet : public Printable
     }
 
     /**
+     * Setting and Getting the flag of whether the packet
+     * needs to be sent right away.
+    */
+    bool isSendRightAway()
+    {
+        return sendRightAway;
+    }
+    void setSendRightAway()
+    {
+        sendRightAway = true;
+    }
+    bool isRetriedPkt()
+    {
+        return retriedPkt;
+    }
+    void setRetriedPkt()
+    {
+        retriedPkt = true;
+    }
+    /**
      * Accessor function to atomic op.
      */
     AtomicOpFunctor *getAtomicOp() const { return req->getAtomicOpFunctor(); }
@@ -1029,6 +1054,8 @@ class Packet : public Printable
             size = req->getSize();
             flags.set(VALID_SIZE);
         }
+        pfSource = req->getPFSource();
+        pfDepth = req->getPFDepth();
     }
 
     /**
@@ -1212,6 +1239,10 @@ class Packet : public Printable
     createWrite(const RequestPtr &req)
     {
         return new Packet(req, makeWriteCmd(req));
+    }
+    static PacketPtr
+    createPFtrain(const RequestPtr& req) {
+        return new Packet(req, makePFtrainCmd(req));
     }
 
     /**
@@ -1472,6 +1503,16 @@ class Packet : public Printable
             std::memcpy(getPtr<uint8_t>(), p, getSize());
         }
     }
+    void
+    setData(const uint8_t* p, unsigned src_index, unsigned dest_index, unsigned copySize)
+    {
+        std::memcpy(getPtr<uint8_t>() + dest_index, p + src_index, copySize);
+    }
+    void
+    getData(uint8_t* p)
+    {
+        std::memcpy(p, getPtr<uint8_t>(), getSize());
+    }
 
     /**
      * Copy data into the packet from the provided block pointer,
@@ -1549,6 +1590,8 @@ class Packet : public Printable
     /** Get the data in the packet without byte swapping. */
     template <typename T>
     T getRaw() const;
+    template <typename T>
+    T getRaw_l2tlb(uint64_t offset) const;
 
     /** Set the value in the data pointer to v without byte swapping. */
     template <typename T>
