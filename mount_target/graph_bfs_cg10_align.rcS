@@ -1,0 +1,8 @@
+#!/bin/sh
+
+echo "graph Computing Now!"
+md5sum ./graph_aarch64_bfs_align
+./graph_aarch64_bfs_align ./dataset/cage10.edge 11400 1
+echo "graph Done."
+
+/sbin/m5 exit

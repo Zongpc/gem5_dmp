@@ -339,7 +339,7 @@ class WorkerPrefetcher(QueuedPrefetcher):
     on_miss = False
 
     prefetch_on_access = True
-    prefetch_on_pf_hit = True
+    prefetch_on_pf_hit = False
     use_virtual_addresses = True
 
 class StridePrefetcher(QueuedPrefetcher):
@@ -499,8 +499,8 @@ class CompositeWithWorkerPrefetcher(WorkerPrefetcher):
     cxx_class = 'gem5::prefetch::CompositeWithWorkerPrefetcher'
     cxx_header = "mem/cache/prefetch/composite_with_worker.hh"
     use_virtual_addresses = True
-    prefetch_on_access = False
-    prefetch_on_pf_hit = True
+    prefetch_on_access = True
+    prefetch_on_pf_hit = False
     on_read = True
     on_write = False
     on_data  = True

@@ -249,6 +249,8 @@ Base::observeAccess(const PacketPtr &pkt, bool miss) const
     bool read = pkt->isRead();
     bool inv = pkt->isInvalidate();
 
+    DPRINTF(HWPrefetch, "CDP: miss:%d, prefetchOnPfHit:%d, prefetchOnAccess:%d, onMiss:%d \n", miss, prefetchOnPfHit, prefetchOnAccess, onMiss);
+
     if (!miss) {
         if (prefetchOnPfHit)
             return hasEverBeenPrefetched(pkt->getAddr(), pkt->isSecure());
@@ -394,6 +396,8 @@ Base::probeNotify(const PacketPtr &pkt, bool miss)
             // condition2: !useVirtualAddresses
             PrefetchInfo pfi(pkt, pkt->req->hasVaddr() ? pkt->req->getVaddr() : pkt->req->getPaddr(), miss,
                              Request::XsMetadata(pf_source, pf_depth));
+            DPRINTF(HWPrefetch, "Gen pfi has vaddr: %d , addr is %x\n",
+                        pkt->req->hasVaddr(), pkt->req->hasVaddr() ? pkt->req->getVaddr() : pkt->req->getPaddr());
             pfi.setReqAfterSquash(squashMark);
             pfi.setEverPrefetched(hasEverBeenPrefetched(pkt->getAddr(), pkt->isSecure()));
             pfi.setPfFirstHit(!miss && hasBeenPrefetched(pkt->getAddr(), pkt->isSecure()));

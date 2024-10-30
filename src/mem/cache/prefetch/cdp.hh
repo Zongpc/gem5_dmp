@@ -106,13 +106,13 @@ class CDP : public Queued
             hotVpns.clear();
             for (auto pair2 : vpns) {
                 for (auto pair1 : pair2.second) {
-                    if (pair1.second > counter / 16 || enable_thro) {
+                    if (pair1.second > 8 || enable_thro) {
                         hotVpns[pair2.first][pair1.first] = pair1.second * throttle_aggressiveness;
                     }
                 }
             }
             counter = 0;
-            vpns.clear();
+            //vpns.clear();
         }
         bool search(int vpn2, int vpn1)
         {
@@ -144,8 +144,7 @@ class CDP : public Queued
             mpki = l3_miss_info.second * 1000.0 / ins_num;
         }
     }
-    bool sendPFWithFilter(Addr addr, std::vector<AddrPriority> &addresses, int prio, PrefetchSourceType pfSource,
-                          int pf_depth);
+    bool sendPFWithFilter(Addr vaddr, Addr pc, Addr addr, std::vector<AddrPriority> &addresses, int prio, PrefetchSourceType pfSource, int pf_depth);
 
     CDP(const CDPParams &p);
 
