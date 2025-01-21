@@ -310,7 +310,7 @@ void Queued::notify(const PacketPtr &pkt, const PrefetchInfo &pfi)
 
     // 根据当前访问计算新的预取地址。
     std::vector<AddrPriority> addresses;
-    calculatePrefetch(pfi, addresses);
+    calculatePrefetch(pfi, addresses, pkt);
 
     // 获取允许生成的最大预取数量。
     size_t max_pfs = getMaxPermittedPrefetches(addresses.size());

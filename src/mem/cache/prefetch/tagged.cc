@@ -55,6 +55,7 @@ Tagged::Tagged(const TaggedPrefetcherParams &p)
 
 }
 
+void Tagged::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addresses, const PacketPtr &pkt) {}
 /**
  * 根据给定的预取信息计算并添加预取地址
  *

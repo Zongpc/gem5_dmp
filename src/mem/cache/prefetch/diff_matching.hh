@@ -71,6 +71,7 @@ class DiffMatching : public Stride
         bool ready;
         bool is_pointer_chase;
         bool is_finish_pochase;
+        bool is_early;
         ContextID cID;
         T last;
         T last_value;
@@ -83,7 +84,7 @@ class DiffMatching : public Stride
 
         // normal constructor
         DiffSeqCollection(Addr pc, T last, int diff_size)
-          : pc(pc), valid(false), ready(false),is_pointer_chase(false),is_finish_pochase(false),cID(0), 
+          : pc(pc), valid(false), ready(false),is_pointer_chase(false),is_finish_pochase(false),is_early(false), cID(0), 
             last(last), last_value(-4096), diff_ptr(0), diff_size(diff_size) 
         {
             diff.reserve(diff_size);
@@ -137,9 +138,16 @@ class DiffMatching : public Stride
             is_finish_pochase=true;
         };
 
+        void clear_early()
+        {
+            is_early=false;
+        };
+
         bool isReady() const { return ready; };
 
         bool isValid() const { return valid; };
+
+        bool isEarly() const { return is_early; };
 
         bool isPointer() const {return is_pointer_chase;};
 
@@ -155,7 +163,7 @@ class DiffMatching : public Stride
 
         T operator[](int index) const { return diff[ (diff_ptr+index) % diff_size ]; };
 
-        DiffSeqCollection& update(Addr pc_new, ContextID cID_new, T last_new = 0)
+        DiffSeqCollection& update(Addr pc_new, ContextID cID_new, T last_new = 0, bool is_earlyPo = false)
         {
             pc = pc_new;
             last = last_new;
@@ -165,6 +173,7 @@ class DiffMatching : public Stride
             valid = false;
             is_pointer_chase=false;
             is_finish_pochase=false;
+            is_early=is_earlyPo;
             diff_ptr = 0;
             diff.clear();
             return *this;
@@ -181,7 +190,7 @@ class DiffMatching : public Stride
     int tadt_ptr;
 
     void insertIDDT(Addr index_pc_in, ContextID cID_in);
-    void insertTADT(Addr target_pc_in, ContextID cID_in);
+    void insertTADT(Addr target_pc_in, ContextID cID_in , bool is_earlyPo);
     bool offsetFilter(tadt_ent_t& tadt_ent,Addr req_addr);
     /** RangeTable related */
 
@@ -308,7 +317,7 @@ class DiffMatching : public Stride
     int iq_ptr;
 
     // TODO: insert from Stride Hit
-    void insertIndexQueue(Addr index_pc, ContextID cID_in);
+    void insertIndexQueue(Addr index_pc, ContextID cID_in, bool linkedFlag = false);
 
     void pickIndexPC();
 
@@ -474,7 +483,7 @@ class DiffMatching : public Stride
 
     void diffMatching(tadt_ent_t& tadt_ent);
 
-    void callReadytoIssue(const PrefetchInfo& pfi) override;
+    void callReadytoIssue(const PrefetchInfo& pfi, bool linkedFlag) override;
 
   public:
     DiffMatching(const DiffMatchingPrefetcherParams &p);
@@ -503,7 +512,8 @@ class DiffMatching : public Stride
     void addPfHelper(Stride* s);
 
     void calculatePrefetch(const PrefetchInfo &pfi,
-                           std::vector<AddrPriority> &addresses) override;
+                           std::vector<AddrPriority> &addresses,
+                           const PacketPtr &pkt) override;
 };
 
 } // namespace prefetch

@@ -318,5 +318,11 @@ AMPM::calculatePrefetch(const PrefetchInfo &pfi,
     ampm.calculatePrefetch(pfi, addresses);
 }
 
+void
+AMPM::calculatePrefetch(const PrefetchInfo &pfi,
+    std::vector<AddrPriority> &addresses, const PacketPtr &pkt)
+{
+}
+
 } // namespace prefetch
 } // namespace gem5

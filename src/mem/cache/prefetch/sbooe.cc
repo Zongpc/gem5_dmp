@@ -148,6 +148,7 @@ void SBOOE::notifyFill(const PacketPtr& pkt)
     }
 }
 
+void SBOOE::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addresses, const PacketPtr &pkt) {}
 // 计算预取地址
 void SBOOE::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addresses) {
     // 获取预取信息中的地址

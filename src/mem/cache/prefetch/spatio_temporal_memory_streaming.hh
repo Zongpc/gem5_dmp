@@ -208,6 +208,9 @@ class STeMS : public Queued
 
     void calculatePrefetch(const PrefetchInfo &pfi,
                            std::vector<AddrPriority> &addresses) override;
+    void calculatePrefetch(const PrefetchInfo &pfi,
+                          std::vector<AddrPriority> &addresses,
+                          const PacketPtr &pkt) override;
 };
 
 } // namespace prefetch

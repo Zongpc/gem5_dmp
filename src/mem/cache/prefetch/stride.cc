@@ -161,14 +161,57 @@ Stride::checkStride(Addr addr) const
         if (entry && entry->confidence.calcSaturation() >= threshConf) {
             DPRINTF(HWPrefetch, "Stride Chcek Pass: PC %x, confidence %.3f.\n", addr,entry->confidence.calcSaturation());
             return true;
+        } else if (entry) {
+            DPRINTF(HWPrefetch, "Stride Chcek Fail: PC %x, confidence %.3f.\n", addr,entry->confidence.calcSaturation());
         }
     }
     // 如果没有找到符合要求的条目，则地址不符合 stride 模式
     return false;
 }
 
-// 计算并预测取址
-void Stride::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addresses) {
+uint64_t 
+Stride::catchRspData(const PacketPtr &pkt) const
+{
+    // 如果包中不包含程序计数器（PC），则打印调试信息并返回
+    if (!pkt->req->hasPC()) {
+        DPRINTF(HWPrefetch, "catchRspData: no PC\n");
+        return 0;
+    }
+        
+    // 如果包中的数据无效，则打印调试信息并返回
+    if (!pkt->validData()) {
+        DPRINTF(HWPrefetch, "catchRspData: PC %llx, PAddr %llx, no Data, %s\n", 
+                                pkt->req->getPC(), pkt->req->getPaddr(), pkt->cmdString());
+        return 0;
+    }
+
+    // 假设响应数据的最大长度为 8 字节（int64）
+    // 由于包只保留请求需要的数据，因此我们需要解析所有数据。
+    const int data_stride = 8;
+    const int byte_width = 8;
+
+    // 如果包的大小超过 8 字节，则返回
+    if (pkt->getSize() > 8) return 0; 
+    uint8_t data[8] = {0};
+    pkt->writeData(data); 
+    uint64_t resp_data = 0;
+    // 从数据中构造响应数据
+    for (int i_st = data_stride-1; i_st >= 0; i_st--) {
+        resp_data = resp_data << byte_width;
+        resp_data += static_cast<uint64_t>(data[i_st]);
+    }
+
+    // 如果响应数据可能导致整数溢出，则返回
+    // assert(resp_data <= static_cast<uint64_t>(std::numeric_limits<int64_t>::max()));//xymc
+    if (resp_data > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) return 0;
+
+    return resp_data;
+}
+
+void Stride::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addresses) {}
+
+// 计算并预测取址，输入pkt同时进行linked list地筛选
+void Stride::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addresses, const PacketPtr &pkt) {
     // 如果没有PC（程序计数器），则忽略该请求
     if (!pfi.hasPC()) {
         DPRINTF(HWPrefetch, "Ignoring request with no PC.\n");
@@ -195,6 +238,17 @@ void Stride::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority
         int new_stride = pf_addr - entry->lastAddr;
         bool stride_match = (new_stride == entry->stride);
 
+        // link_detector 找到addr-data的offset稳定的PC
+        int64_t rspData = 0;
+        bool loffset_match = 0;
+        rspData = catchRspData(pkt);
+        if(rspData != 0) {
+            int64_t new_loffset = pf_addr - entry->rspData;
+            loffset_match = (new_loffset == entry->loffset) && (new_loffset < 4096) && (new_stride != 0);
+            entry->rspData = rspData;
+            entry->loffset = new_loffset;
+        }
+
         // 调整步长条目的置信度
         if (stride_match && new_stride != 0) {
             entry->confidence++;
@@ -207,18 +261,27 @@ void Stride::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority
         }
 
         DPRINTF(HWPrefetch, "Hit: PC %x pkt_addr %x (%s) stride %d (%s), "
-                "conf %d\n", pc, pf_addr, is_secure ? "s" : "ns",
+                "conf %d, link (%s)\n", pc, pf_addr, is_secure ? "s" : "ns",
                 new_stride, stride_match ? "match" : "change",
-                (int)entry->confidence);
+                (int)entry->confidence, loffset_match ? "match" : "miss");
 
         entry->lastAddr = pf_addr;
 
         // 如果置信度低于阈值，则中止预测生成
         if (entry->confidence.calcSaturation() < threshConf) {
+            if (loffset_match == 1) { //zongpc
+                callReadytoIssue(pfi, true);
+            }
             return;
         }
 
-        callReadytoIssue(pfi);
+        if (loffset_match == 1) { //zongpc
+            callReadytoIssue(pfi, true);
+        } else {
+            //if(pc < 0x407210) { //debug_zongpc
+                callReadytoIssue(pfi, false);
+            //}
+        }
 
         // 生成多达degree个预测地址
         for (int d = 1; d <= degree; d++) {
@@ -239,6 +302,11 @@ void Stride::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority
         // 找到一个牺牲者条目并插入新条目的数据
         StrideEntry* entry = pcTable->findVictim(pc);
         entry->lastAddr = pf_addr;
+        int64_t rspData = 0;
+        rspData = catchRspData(pkt);
+        if(rspData != 0) {
+            entry->rspData = rspData;
+        }
         pcTable->insertEntry(pc, is_secure, entry);
     }
 }

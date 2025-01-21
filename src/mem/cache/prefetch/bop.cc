@@ -290,7 +290,7 @@ void BOP::bestOffsetLearning(Addr x) {
         }
     }
 }
-
+void BOP::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addresses, const PacketPtr &pkt) {}
 // 计算并添加预取地址到指定的数据结构中
 // 
 // @param pfi 预取信息对象，包含访问地址等信息

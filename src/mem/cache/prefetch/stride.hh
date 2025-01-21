@@ -135,6 +135,9 @@ class Stride : public Queued
         void invalidate() override;
 
         Addr lastAddr;
+        int64_t rspData;
+        int64_t loffset;
+        
         int stride;
         SatCounter8 confidence;
     };
@@ -162,15 +165,22 @@ class Stride : public Queued
      * Call for advanced function when ready to issue stride prefetch.
      * It should do nothing for StridePrefetcher itself.
     */
-    virtual void callReadytoIssue(const PrefetchInfo& pfi) {};
+    virtual void callReadytoIssue(const PrefetchInfo& pfi, bool linkedFlag) {};
+
 
   public:
     Stride(const StridePrefetcherParams &p);
 
     bool checkStride(Addr addr) const;
+    
+    uint64_t catchRspData(const PacketPtr &pkt) const;
 
     void calculatePrefetch(const PrefetchInfo &pfi,
                           std::vector<AddrPriority> &addresses) override;
+
+    void calculatePrefetch(const PrefetchInfo &pfi,
+                          std::vector<AddrPriority> &addresses,
+                          const PacketPtr &pkt) override;
 };
 
 } // namespace prefetch

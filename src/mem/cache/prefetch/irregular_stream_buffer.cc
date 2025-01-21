@@ -72,6 +72,7 @@ IrregularStreamBuffer::IrregularStreamBuffer(
     assert(isPowerOf2(prefetchCandidatesPerEntry));
 }
 
+void IrregularStreamBuffer::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addresses, const PacketPtr &pkt) {}
 /**
  * @brief 计算预取地址
  * 

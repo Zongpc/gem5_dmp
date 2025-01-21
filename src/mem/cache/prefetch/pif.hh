@@ -185,6 +185,11 @@ class PIF : public Queued
         void calculatePrefetch(const PrefetchInfo &pfi,
                                std::vector<AddrPriority> &addresses);
 
+        void calculatePrefetch(const PrefetchInfo &pfi,
+                              std::vector<AddrPriority> &addresses,
+                              const PacketPtr &pkt) override;
+
+
         /**
          * Add a SimObject and a probe name to monitor the retired instructions
          * @param obj The SimObject pointer to listen from

@@ -50,6 +50,7 @@ SlimAMPM::SlimAMPM(const SlimAMPMPrefetcherParams &p)
 // 函数首先尝试通过dcpt成员进行预取计算，若未获得预取地址，则利用ampm成员进行二次计算
 // 结合两种预取机制，以提升预取的准确度与范围
 
+void SlimAMPM::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addresses, const PacketPtr &pkt) {}
 void
 SlimAMPM::calculatePrefetch(const PrefetchInfo &pfi,
                   std::vector<AddrPriority> &addresses)

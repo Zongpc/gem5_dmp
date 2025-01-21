@@ -346,6 +346,7 @@ double SignaturePath::calculateLookaheadConfidence(PatternEntry const &sig,
     return lookahead_confidence;
 }
 
+void SignaturePath::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addresses, const PacketPtr &pkt) {}
 // 根据给定的预取信息计算预取地址
 void SignaturePath::calculatePrefetch(const PrefetchInfo &pfi,
                                     std::vector<AddrPriority> &addresses)

@@ -61,6 +61,7 @@ IndirectMemory::IndirectMemory(const IndirectMemoryPrefetcherParams &p)
 {
 }
 
+void IndirectMemory::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addresses, const PacketPtr &pkt) {}
 // 计算预取地址
 void IndirectMemory::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addresses)
 {

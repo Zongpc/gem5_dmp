@@ -195,7 +195,7 @@ class StridePrefetcher(QueuedPrefetcher):
         3, "Number of bits of the confidence counter"
     )
     initial_confidence = Param.Unsigned(
-        4, "Starting confidence of new entries"
+        3, "Starting confidence of new entries"
     )
     confidence_threshold = Param.Percent(
         50, "Prefetch generation confidence threshold"

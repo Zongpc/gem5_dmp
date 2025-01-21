@@ -169,6 +169,7 @@ STeMS::addToRMOB(Addr sr_addr, Addr pst_addr, unsigned int delta)
     rmob.push_back(rmob_entry);
 }
 
+void STeMS::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addresses, const PacketPtr &pkt) {}
 // 计算预取地址
 void STeMS::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addresses) {
     // 如果没有PC（程序计数器），则忽略该请求

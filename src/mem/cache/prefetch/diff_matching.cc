@@ -422,7 +422,7 @@ void DiffMatching::notifyICSMiss(Addr miss_addr, Addr miss_pc_in, ContextID cID_
         if (ics_ent.updateMiss(miss_pc_in, ics_miss_threshold)) {
             // 尝试向TADT（目标PC表）和RangeTable（范围表）中插入新条目
             // 注意：IDDT（索引PC表）条目应由IndexQueue（索引队列）插入
-            insertTADT(miss_pc_in, cID_in);
+            insertTADT(miss_pc_in, cID_in, false);
             insertRG(miss_addr, miss_pc_in, cID_in);
 
             // 打印调试信息，表示选择ICS条目
@@ -435,7 +435,7 @@ void DiffMatching::notifyICSMiss(Addr miss_addr, Addr miss_pc_in, ContextID cID_
 }
 
 void
-DiffMatching::insertIndexQueue(Addr index_pc_in, ContextID cID_in)
+DiffMatching::insertIndexQueue(Addr index_pc_in, ContextID cID_in, bool linkedFlag)
 {
 
     if ((index_pc_in & 0xffff800000000000) != 0)
@@ -455,7 +455,12 @@ DiffMatching::insertIndexQueue(Addr index_pc_in, ContextID cID_in)
     indexQueue[iq_ptr].update(index_pc_in, cID_in).validate();
     iq_ptr = (iq_ptr + 1) % iq_ent_num;
 
-    DPRINTF(DMP, "insert indexQueue: indexPC %llx cID %d\n", index_pc_in, cID_in);
+    if(linkedFlag){
+        DPRINTF(DMP, "insert indexQueue caused by linkedlist: indexPC %llx cID %d\n", index_pc_in, cID_in);
+        insertTADT(index_pc_in, cID_in, true); //early version
+    } else {
+        DPRINTF(DMP, "insert indexQueue: indexPC %llx cID %d\n", index_pc_in, cID_in);
+    }
 }
 
 void
@@ -507,7 +512,7 @@ DiffMatching::insertIDDT(Addr index_pc_in, ContextID cID_in)
 }
 
 void
-DiffMatching::insertTADT(Addr target_pc_in, ContextID cID_in)
+DiffMatching::insertTADT(Addr target_pc_in, ContextID cID_in, bool is_earlyPo)
 {
 
     if ((target_pc_in & 0xffff800000000000) != 0)
@@ -524,7 +529,7 @@ DiffMatching::insertTADT(Addr target_pc_in, ContextID cID_in)
     }
 
     // insert to position tadt_ptr
-    targetAddrDeltaTable[tadt_ptr].update(target_pc_in, cID_in).validate();
+    targetAddrDeltaTable[tadt_ptr].update(target_pc_in, cID_in, 0, is_earlyPo).validate();
     tadt_ptr = (tadt_ptr + 1) % tadt_ent_num;
 
     DPRINTF(DMP, "insert TADT: targetPC %llx cID %d\n", target_pc_in, cID_in);
@@ -697,9 +702,13 @@ DiffMatching::insertRT(
 
     if(tadt_ent_match.isPointer())
     {
-        tadt_ent_match.update_finish();
-        if(new_index_pc==new_target_pc)
+        if(!tadt_ent_match.isEarly()){    //early version
+            tadt_ent_match.update_finish();
+        }
+        if(new_index_pc==new_target_pc){
+            tadt_ent_match.clear_early(); //early version
             is_pointer_in=true;
+        }
     }
     
     // calculate the target base address
@@ -723,7 +732,6 @@ DiffMatching::insertRT(
 
     /* get indexPC Range type */
     bool new_range_type;
-    bool old_range_flag = false;
 
     // Stride PC should be classified as Range
     // search for all requestor
@@ -732,6 +740,9 @@ DiffMatching::insertRT(
     } else {
         new_range_type = this->checkStride(new_index_pc);
 
+        DPRINTF(DMP, "Check stride result: " "indexPC %llx , rangeType: %d \n",
+            new_index_pc, new_range_type
+        );
         // tmp: only for test
         //new_range_type = true;
     }
@@ -751,6 +762,8 @@ DiffMatching::insertRT(
     }
 
     /*first stream should be rangetype as default*/
+    /*
+    bool old_range_flag = false;
     for (auto& rt_ent : relationTable) {
         if (rt_ent.valid && rt_ent.target_pc == new_index_pc) {
             old_range_flag = true;
@@ -766,6 +779,14 @@ DiffMatching::insertRT(
     } else {
         new_range_type = false;
     }
+    */
+     
+    //zongpc debug ----start
+    //if(new_index_pc == 0x401634) {
+    //    new_range_type = false;
+    //}
+    //zongpc debug ----end
+    
 
     /* get priority */
     int32_t priority = 0;
@@ -974,6 +995,10 @@ bool DiffMatching::offsetFilter(tadt_ent_t& tadt_ent,Addr req_addr)
     if(req_addr-tadt_ent.getValue()<4096)
     {
         tadt_ent.update_pointer_chase();
+        if(tadt_ent.isEarly()){
+            DPRINTF(POINTER,"offsetfilter: pc %llx addr %llx value %llx and it comes from stride causing early\n",tadt_ent.getPC(),req_addr,tadt_ent.getValue());
+            return true;
+        }
         // 打印偏移过滤的相关信息，包括程序计数器值、请求地址和条目值
         DPRINTF(POINTER,"offsetfilter: pc %llx addr %llx value %llx\n",tadt_ent.getPC(),req_addr,tadt_ent.getValue());
         return false;
@@ -1222,8 +1247,8 @@ void DiffMatching::notifyFill(const PacketPtr &pkt, const uint8_t* data_ptr)
             // 计算目标预取地址
             Addr pf_addr = (resp_data << rt_ent.shift) + rt_ent.target_base_addr;
             DPRINTF(HWPrefetch, 
-                    "notifyFill: IndexPC %llx, TargetPC %llx, PAddr %llx, pkt_addr %llx, pkt_offset %llx, pkt_data %llx, pf_addr %llx\n", 
-                    pc, rt_ent.target_pc, pkt->req->getPaddr(), pkt->getAddr(), data_offset, resp_data, pf_addr);
+                    "notifyFill: IndexPC %llx, TargetPC %llx, PAddr %llx, pkt_addr %llx, pkt_offset %llx, pkt_data %llx, pf_addr %llx, range_idx %d \n,", 
+                    pc, rt_ent.target_pc, pkt->req->getPaddr(), pkt->getAddr(), data_offset, resp_data, pf_addr, i_of);
             if(resp_data == 0)
                 continue;
             // 插入到缺失翻译队列中
@@ -1537,6 +1562,7 @@ void DiffMatching::notify (const PacketPtr &pkt, const PrefetchInfo &pfi)
 
                     } else {
                         // 如果缓存块无效，则插入间接预取
+                        DPRINTF(DMP, "Index pc %llx miss on Addr %llx, ahead is %d \n", pc, pkt->getAddr()+ahead, ahead);
                         insertIndirectPrefetch(
                             pkt->getAddr()+ahead, 
                             pc, cid,
@@ -1578,7 +1604,7 @@ void DiffMatching::notify (const PacketPtr &pkt, const PrefetchInfo &pfi)
 // 参数:
 //   pfi - 预取信息引用，包含PC（程序计数器）和其他预取相关数据。
 
-void DiffMatching::callReadytoIssue(const PrefetchInfo& pfi)
+void DiffMatching::callReadytoIssue(const PrefetchInfo& pfi, bool linkedFlag)
 {
     // 获取预取信息中的程序计数器值。
     Addr pc = pfi.getPC();
@@ -1588,7 +1614,7 @@ void DiffMatching::callReadytoIssue(const PrefetchInfo& pfi)
     if ((pc & 0xffff800000000000) == 0)
     {
         // 将PC和预取信息中的核心ID插入到索引队列中。
-        insertIndexQueue(pc, pfi.getcID());
+        insertIndexQueue(pc, pfi.getcID() ,linkedFlag);
     }
 
     // 当自动检测模式开启并且没有已安排的新索引检查事件时。
@@ -1616,17 +1642,17 @@ void DiffMatching::addPfHelper(Stride* s)
 }
 
 // 在DiffMatching类中，计算预取地址并设置优先级
-void DiffMatching::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addresses) 
+void DiffMatching::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addresses, const PacketPtr &pkt) 
 {
     // 如果pf_helper存在，则使用虚拟地址来丢弃跨步预取，同时继续更新pcTables
     if (pf_helper) {
         std::vector<AddrPriority> fake_addresses;
 
         // 调用Stride类的calculatePrefetch方法，将结果存储在fake_addresses中
-        Stride::calculatePrefetch(pfi, fake_addresses);
+        Stride::calculatePrefetch(pfi, fake_addresses, pkt);
     } else {
         // 如果pf_helper不存在，直接调用Stride类的calculatePrefetch方法，将结果存储在addresses中
-        Stride::calculatePrefetch(pfi, addresses);
+        Stride::calculatePrefetch(pfi, addresses, pkt);
     }
 
     // 为跨步预取设置优先级，以防跨步pc与rt_ent的目标pc相同

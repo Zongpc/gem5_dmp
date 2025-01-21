@@ -149,7 +149,6 @@ void DeltaCorrelatingPredictionTables::DCPTEntry::getCandidates(
         }
     }
 }
-
 // 在DeltaCorrelatingPredictionTables类中，计算预取地址的函数
 // 该函数根据提供的PrefetchInfo对象计算一组预取地址
 // 参数:
@@ -206,6 +205,9 @@ void DCPT::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> 
     // 调用dcpt对象的calculatePrefetch方法，进行预取地址计算
     dcpt.calculatePrefetch(pfi, addresses);
 }
+
+void DCPT::calculatePrefetch(const PrefetchInfo &pfi, std::vector<AddrPriority> &addresses, const PacketPtr &pkt) {}
+
 
 } // namespace prefetch
 } // namespace gem5
